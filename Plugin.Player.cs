@@ -381,9 +381,8 @@ public sealed partial class Plugin
     // (a per-frame Enabled poll would run Lua every frame).
     private bool IsBandViewOpen()
     {
-        EnsureLuaState();
-        CallLua("rawset(_G,'__bviewopen', nil) pcall(function() if Z.UIMgr:GetView('band_performance_main_pc') ~= nil then rawset(_G,'__bviewopen', true) end end)");
-        return ReadLuaRaw("__bviewopen") != null;
+        _services.Lua.DoString("pcall(function() rawset(_G,'__bviewopen', nil) if Z.UIMgr:GetView('band_performance_main_pc') ~= nil then rawset(_G,'__bviewopen', true) end end)");
+        return _services.Lua.TryReadGlobalBool("__bviewopen", out var open) && open;
     }
 
     // A song is "selected to switch" when the highlighted queue row isn't the one currently playing.

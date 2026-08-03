@@ -31,22 +31,22 @@ public sealed partial class Plugin
     private void ApplyAutoAcceptEnsemble()
     {
         if (_bandAutoAcceptEnsemble)
-            CallLua("pcall(function() if rawget(_G,'__maestro_ens_h') then return end " +
+            _services.Lua.DoString("pcall(function() if rawget(_G,'__maestro_ens_h') then return end " +
                 "local t={} local h=function(_,info) if info~=nil and info.tipsType==E.InvitationTipsType.BandEnsemble then " +
                 "Z.CoroUtil.create_coro_xpcall(function() local vm=Z.VMMgr.GetVM('band') " +
                 "local tok=Z.DataMgr.Get('band_data').CancelSource:CreateToken() vm:AsyncReplyJoinEnsemble(true, tok) end)() end end " +
                 "rawset(_G,'__maestro_ens_h',h) rawset(_G,'__maestro_ens_t',t) " +
                 "Z.EventMgr:Add(Z.ConstValue.InvitationRefreshTips, h, t) end)");
         else
-            CallLua("pcall(function() local h=rawget(_G,'__maestro_ens_h') local t=rawget(_G,'__maestro_ens_t') " +
+            _services.Lua.DoString("pcall(function() local h=rawget(_G,'__maestro_ens_h') local t=rawget(_G,'__maestro_ens_t') " +
                 "if h~=nil then Z.EventMgr:Remove(Z.ConstValue.InvitationRefreshTips, h, t) " +
                 "rawset(_G,'__maestro_ens_h',nil) rawset(_G,'__maestro_ens_t',nil) end end)");
     }
 
     // Called each frame from the playlist tick: self-healing install of the auto-accept listener. SetAutoAcceptEnsemble
-    // installs immediately on toggle, but that first attempt can lose a race with Lua-state readiness (CallLua no-ops
-    // with "LuaState not ready") — this is the safety net. About every 2 s, while the toggle is ON, we check the
-    // __maestro_ens_h Lua global (null ⇒ listener NOT installed) and re-install if missing. The game's EventMgr sub is
+    // installs immediately on toggle, but that first attempt can lose a race with Lua-state readiness (DoString no-ops
+    // until ILua is Ready) — this is the safety net. About every 2 s, while the toggle is ON, we check the
+    // __maestro_ens_h Lua global (absent ⇒ listener NOT installed) and re-install if missing. The game's EventMgr sub is
     // process-lifetime, so a successful install sticks; the install chunk's own _G guard prevents a duplicate Add. When
     // the toggle is OFF we never re-install, so toggling off is not undone by this tick.
     private void AutoAcceptEnsembleTick(float dt)
@@ -55,7 +55,10 @@ public sealed partial class Plugin
         _autoAcceptHealAccumMs += dt * 1000.0;
         if (_autoAcceptHealAccumMs < 2000) return;   // ~0.5 Hz poll
         _autoAcceptHealAccumMs = 0;
-        if (ReadLuaRaw("__maestro_ens_h") == null) ApplyAutoAcceptEnsemble();   // null ⇒ not installed (or Lua not ready yet)
+        // The listener is a Lua FUNCTION, not a boolean — ILua can't read it back directly, so park a boolean that
+        // reflects its presence and read that. false ⇒ not installed (or Lua not ready yet) ⇒ (re)install.
+        _services.Lua.DoString("pcall(function() rawset(_G,'__maestro_ens_installed', rawget(_G,'__maestro_ens_h')~=nil) end)");
+        if (!(_services.Lua.TryReadGlobalBool("__maestro_ens_installed", out var installed) && installed)) ApplyAutoAcceptEnsemble();
     }
 
     // True while in a live ensemble session (reflection read; call sparingly).

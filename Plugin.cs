@@ -23,7 +23,7 @@ public sealed partial class Plugin : IStellarPlugin
         _services = services;
         _cfg = _services.Config.GetSection("settings");
 
-        _bandPlayer = new MidiPlayer(_services, CallLua);
+        _bandPlayer = new MidiPlayer(_services);
         _previewSynth = new PreviewSynth(_services);
 
         _bandHoldMs       = _cfg.Get<int> ("hold_ms",        0);
@@ -73,7 +73,7 @@ public sealed partial class Plugin : IStellarPlugin
         _services.Framework.Update += PlaylistTick;   // auto-advance the queue when a song finishes
 
         // STEP-0 spike: capture InstrumentService to read the ensemble grid from C#.
-        try { EnsemblePatch.Install("stellar.maestro.ensemble", m => _services.Log.Info(m)); }
+        try { EnsemblePatch.Install(_services.Harmony.Create("ensemble"), m => _services.Log.Info(m)); }
         catch (Exception ex) { _services.Log.Warning($"[Maestro] ensemble patch install failed: {ex.Message}"); }
 
         _services.Log.Info("[Maestro] constructed");
@@ -98,16 +98,6 @@ public sealed partial class Plugin : IStellarPlugin
             OnClose: () => w!.SetVisible(false)));
         _windows.Add(w);
         return w;
-    }
-
-    private static Type? FindType(string fullName)
-    {
-        foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
-        {
-            var t = asm.GetType(fullName);
-            if (t is not null) return t;
-        }
-        return null;
     }
 
     private static byte[]? LoadIconPng()

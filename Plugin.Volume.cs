@@ -31,10 +31,10 @@ public sealed partial class Plugin
     private void ApplyMonitorVolume()
     {
         string v = _monitorVol.ToString(CultureInfo.InvariantCulture);
-        CallLua(
-            "Z.LocalUserDataMgr.SetFloatByLua(E.LocalUserDataType.Device, '" + MonitorVolKey + "', " + v + ") " +
+        _services.Lua.DoString(
+            "pcall(function() Z.LocalUserDataMgr.SetFloatByLua(E.LocalUserDataType.Device, '" + MonitorVolKey + "', " + v + ") " +
             "local svc = Z.DIServiceMgr.InstrumentService " +
-            "if svc ~= nil then svc:SetInstrumentVolume(Panda.ZGame.EInstrumentVolumeType.IntToEnum(" + MonitorVolChannel + "), " + v + ") end");
+            "if svc ~= nil then svc:SetInstrumentVolume(Panda.ZGame.EInstrumentVolumeType.IntToEnum(" + MonitorVolChannel + "), " + v + ") end end)");
     }
 
     private HudElement BuildMonitorVolumeRow() => SliderRow("monitor_volume", () => "Monitor vol",

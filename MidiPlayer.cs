@@ -17,7 +17,6 @@ namespace Stellar.Maestro;
 public sealed partial class MidiPlayer : IDisposable
 {
     private readonly IPluginServices     _services;
-    private readonly Func<string, string?> _callLua;
 
     // Every note is held for at least this long, so notes shorter than a frame are still audible.
     private const double MinHoldMs = 25.0;
@@ -84,10 +83,9 @@ public sealed partial class MidiPlayer : IDisposable
         }
     }
 
-    public MidiPlayer(IPluginServices services, Func<string, string?> callLua)
+    public MidiPlayer(IPluginServices services)
     {
         _services = services;
-        _callLua  = callLua;
     }
 
     public void Load(MidiSong song)
@@ -272,7 +270,7 @@ public sealed partial class MidiPlayer : IDisposable
         if (_netMode)
         {
             _b2ClockOffset = _realMs - _clock.Elapsed.TotalMilliseconds;
-            _callLua("pcall(function() rawset(_G,'__b2base', Z.ServerTime:GetServerTime() - " + (long)Math.Round(_realMs) + ") end)");
+            _services.Lua.DoString("pcall(function() rawset(_G,'__b2base', Z.ServerTime:GetServerTime() - " + (long)Math.Round(_realMs) + ") end)");
         }
         else
         {
@@ -414,7 +412,7 @@ public sealed partial class MidiPlayer : IDisposable
 
     // Re-fetch the live view each frame so the chunk is a no-op the instant the player exits Free-Play.
     private void FlushChunk(string body)
-        => _callLua("pcall(function() local v=Z.UIMgr:GetView('band_performance_main_pc') if v==nil then return end " + body + "end)");
+        => _services.Lua.DoString("pcall(function() local v=Z.UIMgr:GetView('band_performance_main_pc') if v==nil then return end " + body + "end)");
 
     public void Dispose() => Stop();
 }

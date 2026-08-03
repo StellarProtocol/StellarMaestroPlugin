@@ -63,7 +63,7 @@ public sealed partial class MidiPlayer
     // Replicates the visual half of the view's PressKeyByKeyCount/ReleaseKeyByKeyCount (light the key + click effect)
     // WITHOUT the AddWaitSend* network sync — so buffered mode shows the animation but stays the sole network sender.
     // Registered as Lua globals __mvp/__mvr so the per-note flush only emits a tiny call. Guarded (pcall + nil checks).
-    private void DefineKeyVizHelpers() => _callLua(
+    private void DefineKeyVizHelpers() => _services.Lua.DoString(
         "pcall(function() " +
         "rawset(_G,'__mvp',function(kc) local v=Z.UIMgr:GetView('band_performance_main_pc') if v==nil then return end " +
         "local ik=v:GetKeyIndexByKeyCount(kc) local it=v.uiBinder.binder_key_root['band_key_item_tpl_'..ik] if it==nil then return end " +
@@ -107,11 +107,11 @@ public sealed partial class MidiPlayer
         if (EnsembleGrid && EnsembleBaseMs > 0)
         {
             _b2ClockOffset = EnsembleClockOffset;   // negative → local audio waits for the downbeat (count-in)
-            _callLua("pcall(function() rawset(_G,'__b2base'," + EnsembleBaseMs + ") end)");
+            _services.Lua.DoString("pcall(function() rawset(_G,'__b2base'," + EnsembleBaseMs + ") end)");
         }
         else
         {
-            _callLua("pcall(function() rawset(_G,'__b2base', Z.ServerTime:GetServerTime()) end)");
+            _services.Lua.DoString("pcall(function() rawset(_G,'__b2base', Z.ServerTime:GetServerTime()) end)");
         }
     }
 
@@ -278,23 +278,23 @@ public sealed partial class MidiPlayer
     }
 
     private void FlushLocalNotesB2()
-        => _callLua("pcall(function() local svc=Z.DIServiceMgr.InstrumentService local ent=Z.EntityMgr.PlayerEnt if svc==nil or ent==nil then return end " + _sb + "end)");
+        => _services.Lua.DoString("pcall(function() local svc=Z.DIServiceMgr.InstrumentService local ent=Z.EntityMgr.PlayerEnt if svc==nil or ent==nil then return end " + _sb + "end)");
 
     // Local-only pedal set: applies the sustain pedal to the local instrument now. The NETWORK pedal is no longer sent
     // here — it rides the timestamped SustainPedal record in SendBatchB2 (pre-buffered, on-beat with the notes/tone).
     private void FlushPedalB2(bool on)
-        => _callLua("pcall(function() local svc=Z.DIServiceMgr.InstrumentService local ent=Z.EntityMgr.PlayerEnt if svc~=nil and ent~=nil then svc:EntityInstrumentSetSustainPedal(ent, " + (on ? "true" : "false") + ", true) end end)");
+        => _services.Lua.DoString("pcall(function() local svc=Z.DIServiceMgr.InstrumentService local ent=Z.EntityMgr.PlayerEnt if svc~=nil and ent~=nil then svc:EntityInstrumentSetSustainPedal(ent, " + (on ? "true" : "false") + ", true) end end)");
 
     // B1 (non-net): drive the pedal through the game's own path (local set + networked settings sync to listeners).
     private void FlushPedalB1(bool on)
-        => _callLua("pcall(function() local vm=Z.VMMgr.GetVM('band') local v=Z.UIMgr:GetView('band_performance_main_pc') local tok=(v and v.cancelSource or Z.DataMgr.Get('band_data').CancelSource):CreateToken() vm:HandleInstrumentPedal(" + (on ? "true" : "false") + ", tok) end)");
+        => _services.Lua.DoString("pcall(function() local vm=Z.VMMgr.GetVM('band') local v=Z.UIMgr:GetView('band_performance_main_pc') local tok=(v and v.cancelSource or Z.DataMgr.Get('band_data').CancelSource):CreateToken() vm:HandleInstrumentPedal(" + (on ? "true" : "false") + ", tok) end)");
 
     // Apply the pedal for the current mode: B2 = local-only (network rides the sync records); B1 = local + network via the game path.
     private void ApplyPedal(bool on) { if (_netMode) FlushPedalB2(on); else FlushPedalB1(on); }
 
     // Send a single SustainPedal record to listeners at the CURRENT position (for a live mid-song force-sustain toggle).
     private void SendPedalImmediateB2(bool down)
-        => _callLua("pcall(function() Z.CoroUtil.create_coro_xpcall(function() " +
+        => _services.Lua.DoString("pcall(function() Z.CoroUtil.create_coro_xpcall(function() " +
             "local vm=Z.VMMgr.GetVM('band') local tok=Z.DataMgr.Get('band_data').CancelSource:CreateToken() " +
             "vm:AsyncSendInstrumentSyncData({{syncType=E.EInstrumentSyncType.SustainPedal,playTime=__b2base+" +
             (long)System.Math.Round(_realMs) + ",playParam=" + (down ? 1 : 0) +
@@ -338,7 +338,7 @@ public sealed partial class MidiPlayer
         }
 
         if (_payload.Length == 0) return;
-        _callLua("pcall(function() Z.CoroUtil.create_coro_xpcall(function() local vm=Z.VMMgr.GetVM('band') local tok=Z.DataMgr.Get('band_data').CancelSource:CreateToken() vm:AsyncSendInstrumentSyncData({" + _payload + "}, tok) end)() end)");
+        _services.Lua.DoString("pcall(function() Z.CoroUtil.create_coro_xpcall(function() local vm=Z.VMMgr.GetVM('band') local tok=Z.DataMgr.Get('band_data').CancelSource:CreateToken() vm:AsyncSendInstrumentSyncData({" + _payload + "}, tok) end)() end)");
     }
 
     private void ReleaseAllHeldB2()

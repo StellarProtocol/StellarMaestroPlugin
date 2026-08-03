@@ -27,7 +27,7 @@ public sealed partial class Plugin
     {
         try
         {
-            var t = FindType("Panda.Utility.LocalUserDataManager") ?? FindType("LocalUserDataManager");
+            var t = StellarInterop.FindType("Panda.Utility.LocalUserDataManager") ?? StellarInterop.FindType("LocalUserDataManager");
             var m = t?.GetMethods(BindingFlags.Static | BindingFlags.Public)
                      .FirstOrDefault(x => x.Name == "GetFloat" && x.GetParameters().Length >= 3 && x.GetParameters()[1].ParameterType == typeof(string));
             if (m == null) return GameBufferDefaultMs;

@@ -100,7 +100,7 @@ public sealed partial class MidiPlayer
 
     // B1: game's own path (local set + live broadcast).
     private void EmitLiveApply(int toneCat, int techKind)
-        => _callLua("pcall(function() " + RESOLVE + Pick(toneCat, techKind) +
+        => _services.Lua.DoString("pcall(function() " + RESOLVE + Pick(toneCat, techKind) +
             "local vm=Z.VMMgr.GetVM('band') local tok=(v.cancelSource or Z.DataMgr.Get('band_data').CancelSource):CreateToken() " +
             "vm:HandleInstrumentTone(timbre, tok) vm:HandleInstrumentTechnique(kind, tok) end)");
 
@@ -108,14 +108,14 @@ public sealed partial class MidiPlayer
     // primitives (no lock gate, no broadcast). EntityInstrumentSetTone is the sticky local-only tone setter;
     // EntityInstrumentSetTechnique is the matching persistent-switch setter.
     private void EmitLocalSet(int toneCat, int techKind)
-        => _callLua("pcall(function() " + RESOLVE + Pick(toneCat, techKind) +
+        => _services.Lua.DoString("pcall(function() " + RESOLVE + Pick(toneCat, techKind) +
             "local svc=Z.DIServiceMgr.InstrumentService local ent=Z.EntityMgr.PlayerEnt " +
             "svc:EntityInstrumentSetTone(ent, timbre, true) " +
             "svc:EntityInstrumentSetTechnique(ent, (Panda.ZAudio.EPlayingTechnique.IntToEnum)(kind), true) end)");
 
     // B2: send the change as a TIMESTAMPED record (playTime = __b2base+ms), the same pipe/scheduling as notes.
     private void EmitNetSend(int toneCat, int techKind, long ms)
-        => _callLua("pcall(function() " + RESOLVE + Pick(toneCat, techKind) +
+        => _services.Lua.DoString("pcall(function() " + RESOLVE + Pick(toneCat, techKind) +
             "local vm=Z.VMMgr.GetVM('band') local tok=(v.cancelSource or Z.DataMgr.Get('band_data').CancelSource):CreateToken() " +
             "local recs={{syncType=E.EInstrumentSyncType.Tone,playTime=__b2base+" + ms + ",playParam=timbre,playType=E.EInstrumentPlayType.Press,expectedSyncTime=0}," +
             "{syncType=E.EInstrumentSyncType.Technique,playTime=__b2base+" + ms + ",playParam=kind,playType=E.EInstrumentPlayType.Press,expectedSyncTime=0}} " +

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using Stellar.Abstractions.Services;
 
 namespace Stellar.Maestro;
 
@@ -56,7 +57,7 @@ internal sealed partial class PreviewSynth
         if (_interopReady) return true;
         try
         {
-            _tPlayer = FindType("Panda.ZAudio.InstrumentPlayer");
+            _tPlayer = StellarInterop.FindType("Panda.ZAudio.InstrumentPlayer");
             if (_tPlayer == null) { Log("InstrumentPlayer type not found"); return false; }
 
             var stat = BindingFlags.Static | BindingFlags.Public;
@@ -78,14 +79,14 @@ internal sealed partial class PreviewSynth
             if (_mRent == null || _pProvider == null || _pEventName == null)
             { Log($"missing core handles: Rent={_mRent != null} provider={_pProvider != null} event={_pEventName != null}"); return false; }
 
-            var tVec = FindType("UnityEngine.Vector3");
+            var tVec = StellarInterop.FindType("UnityEngine.Vector3");
             _zeroPos = tVec?.GetProperty("zero", BindingFlags.Static | BindingFlags.Public)?.GetValue(null);
 
-            var tCam = FindType("UnityEngine.Camera");
+            var tCam = StellarInterop.FindType("UnityEngine.Camera");
             _pCamMain = tCam?.GetProperty("main", BindingFlags.Static | BindingFlags.Public);
 
             // AkSoundEngine.StopPlayingID(playingId, fadeMs) — the only reliable way to stop a directly-posted MIDI note.
-            var tAk = FindType("AkSoundEngine");
+            var tAk = StellarInterop.FindType("AkSoundEngine");
             _mStopPid = tAk?.GetMethod("StopPlayingID", new[] { typeof(uint), typeof(int) });
             if (_mStopPid == null) Log("StopPlayingID(uint,int) not found — notes won't stop");
 
@@ -146,8 +147,8 @@ internal sealed partial class PreviewSynth
     {
         try
         {
-            var tMgr = FindType("Panda.ZAudio.ZInstrumentMgr") ?? FindType("ZInstrumentMgr");
-            var mgr  = tMgr?.GetProperty("Instance", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.FlattenHierarchy)?.GetValue(null);
+            var tMgr = StellarInterop.FindType("Panda.ZAudio.ZInstrumentMgr") ?? StellarInterop.FindType("ZInstrumentMgr");
+            var mgr  = StellarInterop.GetSingleton(tMgr);
             var m    = tMgr?.GetMethod("TryGetInstrumentConfig");
             if (mgr == null || m == null) return null;
             var args = new object?[] { id, null };
@@ -265,13 +266,4 @@ internal sealed partial class PreviewSynth
         return _zeroPos!;
     }
 
-    private static Type? FindType(string fullName)
-    {
-        foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
-        {
-            var x = asm.GetType(fullName);
-            if (x != null) return x;
-        }
-        return null;
-    }
 }

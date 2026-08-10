@@ -17,6 +17,7 @@ public sealed partial class Plugin : IStellarPlugin
     private readonly List<IDisposable>    _launchers = new();
     private readonly MidiPlayer  _bandPlayer;
     private readonly PreviewSynth _previewSynth;
+    private IUpdateRateScope? _rateScope;
 
     public Plugin(IPluginServices services)
     {
@@ -116,6 +117,7 @@ public sealed partial class Plugin : IStellarPlugin
     public void Dispose()
     {
         try { _services.Framework.Update -= PlaylistTick; } catch { }
+        try { _rateScope?.Dispose(); } catch { }
         try { _previewSynth.Dispose(); } catch { }
         try { EnsemblePatch.Uninstall(); } catch { }
         _bandPlayer.Dispose();

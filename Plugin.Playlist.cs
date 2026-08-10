@@ -203,6 +203,7 @@ public sealed partial class Plugin
     // Called each frame (from Plugin.cs): advance the queue when a song finishes, after an optional silent gap.
     private void PlaylistTick(float dt)
     {
+        ManageUpdateRate();            // hold 120 Hz while a song plays; release when idle (before early-returns)
         TipRepositionTick();           // re-assert the help tooltip's anchored position for a few frames after opening
         AutoAcceptEnsembleTick(dt);    // self-healing: (re)install the auto-accept listener while enabled if it's missing
         if (_ensembleWaiting) { EnsembleWaitTick(dt); return; }   // armed → wait for the ensemble to go live
@@ -216,6 +217,15 @@ public sealed partial class Plugin
         if (_loopMode != 2 && !_autoAdvance) return;   // stop at end (not looping-one, not auto-advancing)
         if (_gapSec > 0) { _gapRemainMs = _gapSec * 1000.0; _bandMidiStatus = $"next in {_gapSec}s…"; return; }
         AdvanceAfterGap();
+    }
+
+    // Self-managed update rate: hold 120 Hz while a song plays (tight note timing), release when idle.
+    // Safe no-op unless the user granted Maestro rate-control permission (Settings → Performance).
+    private void ManageUpdateRate()
+    {
+        bool active = _bandPlayer.IsPlaying || _previewSynth.IsPlaying;
+        if (active && _rateScope == null) _rateScope = _services.Framework.RequestUpdateRate(120);
+        else if (!active && _rateScope != null) { _rateScope.Dispose(); _rateScope = null; }
     }
 
     private void AdvanceAfterGap()

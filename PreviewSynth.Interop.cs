@@ -43,8 +43,6 @@ internal sealed partial class PreviewSynth
     private object?     _camTransform;         // cached main-camera transform (re-resolved if it dies)
     private bool        _interopReady;
 
-    private const int InstBankCap = 16;   // Wwise voice headroom guard (unused directly; kept for clarity)
-
     private void LogEx(string where, Exception ex)
     {
         var e = ex is TargetInvocationException tie && tie.InnerException != null ? tie.InnerException : ex;

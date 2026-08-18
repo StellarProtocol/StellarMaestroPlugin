@@ -12,6 +12,7 @@ public sealed partial class Plugin : IStellarPlugin
     public string Name => "Maestro";
 
     private readonly IPluginServices _services;
+    private readonly ILocalization   _loc;
     private readonly IConfigSection  _cfg;
     private readonly List<IWindowControl> _windows   = new();
     private readonly List<IDisposable>    _launchers = new();
@@ -22,6 +23,7 @@ public sealed partial class Plugin : IStellarPlugin
     public Plugin(IPluginServices services)
     {
         _services = services;
+        _loc = services.Localization;
         _cfg = _services.Config.GetSection("settings");
 
         _bandPlayer = new MidiPlayer(_services);
@@ -56,14 +58,14 @@ public sealed partial class Plugin : IStellarPlugin
         LoadPlaylists();
         RescanMidiFolder();   // create the midi/ folder (if missing) and pre-populate the song list at startup
 
-        _networkWindow  = RegisterWindow("maestro.network",  "Maestro — Network",  1, BuildNetworkRoot());
-        _settingsWindow = RegisterWindow("maestro.settings", "Maestro — Settings", 3, BuildSettingsRoot());
-        _libraryWindow  = RegisterWindow("maestro.library",  "Maestro — Library",  4, BuildLibraryRoot());
-        _previewWindow  = RegisterWindow("maestro.preview",  "Maestro — MIDI Preview (Local)",  5, BuildPreviewRoot());
+        _networkWindow  = RegisterWindow("maestro.network",  _loc.T("mst.win.network"),  1, BuildNetworkRoot());
+        _settingsWindow = RegisterWindow("maestro.settings", _loc.T("mst.win.settings"), 3, BuildSettingsRoot());
+        _libraryWindow  = RegisterWindow("maestro.library",  _loc.T("mst.win.library"),  4, BuildLibraryRoot());
+        _previewWindow  = RegisterWindow("maestro.preview",  _loc.T("mst.win.preview"),  5, BuildPreviewRoot());
         _tipWindow      = RegisterTipWindow();
-        var window = RegisterWindow("maestro.main", "Maestro", 0, BuildBandRoot());
+        var window = RegisterWindow("maestro.main", _loc.T("mst.title"), 0, BuildBandRoot());
         _launchers.Add(_services.Launcher.Register(new LauncherEntry(
-            Title:   "Maestro",
+            Title:   _loc.T("mst.title"),
             IconPng: LoadIconPng(),
             IconKey: null,
             OnOpen:  () => { RescanMidiFolder(); window.SetVisible(true); })   // rescan the midi/ folder each open

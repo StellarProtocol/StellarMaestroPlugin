@@ -20,7 +20,7 @@ public sealed partial class Plugin
 
     private HudElement BuildBandRoot() => new ColumnElement(new HudElement[]
     {
-        new TextElement(() => "MIDI Auto-Player", Emphasis: true),
+        new TextElement(() => _loc.T("mst.player.header"), Emphasis: true),
 
         BuildPlaylistSection(),
 
@@ -30,7 +30,7 @@ public sealed partial class Plugin
             new CellElement(new ButtonElement(Label: () => "◀◀", OnClick: PlayPrev), Width: 46f),
             new CellElement(new ButtonElement(Label: PlayPauseLabel, OnClick: PlayPause), Weight: 1f),
             new CellElement(new ButtonElement(Label: () => "▶▶", OnClick: () => PlayNext(false)), Width: 46f),
-            new CellElement(new ButtonElement(Label: () => "■ Stop", OnClick: StopPlayback), Width: 80f),
+            new CellElement(new ButtonElement(Label: () => "■ " + _loc.T("mst.stop"), OnClick: StopPlayback), Width: 80f),
         }, Gap: 4f),
         new RowElement(new HudElement[]
         {
@@ -39,52 +39,52 @@ public sealed partial class Plugin
         }, Gap: 6f),
         new RowElement(new HudElement[]
         {
-            new CellElement(new TextElement(() => "Song", Color: () => (ColorRgba?)_services.Theme.Colors.TextMuted), Width: 48f),
+            new CellElement(new TextElement(() => _loc.T("mst.song"), Color: () => (ColorRgba?)_services.Theme.Colors.TextMuted), Width: 48f),
             new TextElement(() => (_bandPlayer.IsPlaying || _bandPlayer.IsPaused) ? _bandSongInfo : "—"),
         }, Gap: 6f),
         new RowElement(new HudElement[]
         {
-            new CellElement(new TextElement(() => "Play", Color: () => (ColorRgba?)_services.Theme.Colors.TextMuted), Width: 48f),
+            new CellElement(new TextElement(() => _loc.T("mst.playLabel"), Color: () => (ColorRgba?)_services.Theme.Colors.TextMuted), Width: 48f),
             new TextElement(() => _ensembleWaiting
-                ? "waiting for ensemble…"
+                ? _loc.T("mst.play.waitEnsemble")
                 : _bandPlayer.CountInRemainMs > 0
-                ? $"count-in {_bandPlayer.CountInRemainMs / 1000.0:F1}s…"
+                ? _loc.TFormat("mst.play.countIn", (_bandPlayer.CountInRemainMs / 1000.0).ToString("F1"))
                 : (_bandPlayer.IsPlaying
-                    ? $"notes {_bandPlayer.SentNotes}/{_bandPlayer.SongNotes}"
-                    : (_bandPlayer.SentNotes > 0 ? $"done — sent {_bandPlayer.SentNotes}/{_bandPlayer.SongNotes} notes" : "stopped"))),
+                    ? _loc.TFormat("mst.play.notes", _bandPlayer.SentNotes, _bandPlayer.SongNotes)
+                    : (_bandPlayer.SentNotes > 0 ? _loc.TFormat("mst.play.done", _bandPlayer.SentNotes, _bandPlayer.SongNotes) : _loc.T("mst.play.stopped")))),
         }, Gap: 6f),
         new RowElement(new HudElement[]
         {
-            new CellElement(new TextElement(() => "Status", Color: () => (ColorRgba?)_services.Theme.Colors.TextMuted), Width: 48f),
+            new CellElement(new TextElement(() => _loc.T("mst.status"), Color: () => (ColorRgba?)_services.Theme.Colors.TextMuted), Width: 48f),
             new TextElement(() => _bandMidiStatus, Color: () => (ColorRgba?)_services.Theme.Colors.TextMuted),
         }, Gap: 6f),
 
         new SeparatorElement(),
-        new ButtonElement(Label: () => "🎧 Midi Preview (Local)", OnClick: () => _previewWindow.SetVisible(true), Width: 320f),
-        new ButtonElement(Label: () => "Settings", OnClick: () => _settingsWindow.SetVisible(true), Width: 320f),
+        new ButtonElement(Label: () => "🎧 " + _loc.T("mst.btn.preview"), OnClick: () => _previewWindow.SetVisible(true), Width: 320f),
+        new ButtonElement(Label: () => _loc.T("mst.btn.settings"), OnClick: () => _settingsWindow.SetVisible(true), Width: 320f),
     }, Gap: 8f);
 
     // The Library window — browse the midi/ folder and click a song to add it to the queue.
     private HudElement BuildLibraryRoot() => new ColumnElement(new HudElement[]
     {
-        new TextElement(() => "MIDI Library", Emphasis: true),
+        new TextElement(() => _loc.T("mst.lib.header"), Emphasis: true),
         new RowElement(new HudElement[]
         {
-            new CellElement(new ButtonElement(Label: () => "Rescan folder", OnClick: RescanMidiFolder), Weight: 1f),
-            new CellElement(new ButtonElement(Label: () => "Locate",        OnClick: OpenMidiFolder),   Weight: 1f),
+            new CellElement(new ButtonElement(Label: () => _loc.T("mst.lib.rescan"), OnClick: RescanMidiFolder), Weight: 1f),
+            new CellElement(new ButtonElement(Label: () => _loc.T("mst.lib.locate"),        OnClick: OpenMidiFolder),   Weight: 1f),
         }, Gap: 4f),
         new SeparatorElement(),
         new RowElement(new HudElement[]
         {
-            new CellElement(new TextElement(() => "Search", Color: () => (ColorRgba?)_services.Theme.Colors.TextMuted), Width: 56f),
+            new CellElement(new TextElement(() => _loc.T("mst.lib.search"), Color: () => (ColorRgba?)_services.Theme.Colors.TextMuted), Width: 56f),
             new CellElement(new InputElement(Get: () => _librarySearch, Submit: SetLibrarySearch, OnChange: SetLibrarySearch), Weight: 1f),
-            new CellElement(new ButtonElement(Label: () => "Clear", OnClick: () => SetLibrarySearch("")), Width: 56f),
+            new CellElement(new ButtonElement(Label: () => _loc.T("mst.lib.clear"), OnClick: () => SetLibrarySearch("")), Width: 56f),
         }, Gap: 6f),
         new TextElement(() => _bandSongs.Length == 0
-                ? "No songs — Rescan/Locate the folder"
+                ? _loc.T("mst.lib.empty")
                 : _songView.Length == _bandSongs.Length
-                    ? $"Library ({_bandSongs.Length}) — click to add to queue"
-                    : $"Library ({_songView.Length} of {_bandSongs.Length}) — click to add to queue",
+                    ? _loc.TFormat("mst.lib.count", _bandSongs.Length)
+                    : _loc.TFormat("mst.lib.countFiltered", _songView.Length, _bandSongs.Length),
             Color: () => (ColorRgba?)_services.Theme.Colors.TextMuted),
         new VirtualListElement(
             Count:     () => _songView.Length,
@@ -98,92 +98,63 @@ public sealed partial class Plugin
     // The Settings window — playback tuning + the buffered-sync toggle and its Network Settings button.
     private HudElement BuildSettingsRoot() => new ColumnElement(new HudElement[]
     {
-        new TextElement(() => "Settings", Emphasis: true),
-        SliderRow("transpose", () => "Transpose",
+        new TextElement(() => _loc.T("mst.settings.header"), Emphasis: true),
+        SliderRow("transpose", () => _loc.T("mst.set.transpose"),
             new SliderElement(Get: () => _bandTranspose, Set: v => SetTranspose((int)System.MathF.Round(v)), Min: -48f, Max: 48f),
             () => $"{(_bandTranspose >= 0 ? "+" : "")}{_bandTranspose}",
             () => SetTranspose(0),
-            () => "Shifts every note up or down in semitones (12 = one octave). Use it to move a song into the "
-                + "summoned instrument's playable range."),
-        SliderRow("hold_ms", () => "Note hold",
+            () => _loc.T("mst.set.transpose.help")),
+        SliderRow("hold_ms", () => _loc.T("mst.set.hold"),
             new SliderElement(Get: () => _bandHoldMs, Set: v => SetHold((int)System.MathF.Round(v)), Min: -500f, Max: 2000f),
             () => $"{(_bandHoldMs >= 0 ? "+" : "")}{_bandHoldMs}",
             () => SetHold(0),
-            () => "Adds to or subtracts from how long each note is held, in milliseconds. Positive makes notes ring "
-                + "longer (more sustain); negative cuts them shorter. 0 = each note's exact written length."),
-        SliderRow("tempo_pct", () => "Tempo %",
+            () => _loc.T("mst.set.hold.help")),
+        SliderRow("tempo_pct", () => _loc.T("mst.set.tempo"),
             new SliderElement(Get: () => _bandTempoPct, Set: v => SetTempo((int)System.MathF.Round(v)), Min: 25f, Max: 400f),
             () => $"{_bandTempoPct}%",
             () => SetTempo(100),
-            () => "Playback speed as a percent of the song's own tempo. 100 = original; higher is faster, lower is "
-                + "slower. In an ensemble the tempo is set by the ensemble instead."),
-        SliderRow("max_poly", () => "Max notes",
+            () => _loc.T("mst.set.tempo.help")),
+        SliderRow("max_poly", () => _loc.T("mst.set.maxpoly"),
             new SliderElement(Get: () => _bandMaxPoly, Set: v => SetMaxPoly((int)System.MathF.Round(v)), Min: 0f, Max: 16f),
-            () => _bandMaxPoly == 0 ? "off" : _bandMaxPoly.ToString(),
+            () => _bandMaxPoly == 0 ? _loc.T("mst.off") : _bandMaxPoly.ToString(),
             () => SetMaxPoly(0),
-            () => "Caps how many notes may sound at once. When exceeded, the oldest (or the lowest within a chord) "
-                + "notes are dropped. off = no cap — lower it if dense passages overwhelm the instrument."),
-        SliderRow("restrike_gap", () => "Restrike gap",
+            () => _loc.T("mst.set.maxpoly.help")),
+        SliderRow("restrike_gap", () => _loc.T("mst.set.restrike"),
             new SliderElement(Get: () => _bandRestrikeGapMs, Set: v => SetRestrikeGap((int)System.MathF.Round(v)), Min: 0f, Max: 100f),
-            () => _bandRestrikeGapMs == 0 ? "off" : $"{_bandRestrikeGapMs}ms",
+            () => _bandRestrikeGapMs == 0 ? _loc.T("mst.off") : $"{_bandRestrikeGapMs}ms",
             () => SetRestrikeGap(0),
-            () => "When the same pitch repeats, it is released this many ms before being struck again — including "
-                + "back-to-back notes — so each repeat registers as a new note. off = release exactly at the re-press, "
-                + "which makes fast same-pitch runs drop at the LISTENER in Network Sync mode.\n\n"
-                + "Default 16 ms (inaudible). Raise it if dense same-pitch runs still drop for listeners."),
+            () => _loc.T("mst.set.restrike.help")),
         BuildMonitorVolumeRow(),
         HelpToggle("force_sustain",
             () => _bandForceSustain,
             v  => { _bandForceSustain = v; _bandPlayer.ForceSustain = v; _cfg.Set<bool>("force_sustain", v); _cfg.Save(); },
-            () => "Force sustain",
-            () => "Holds the sustain pedal down for the whole song, so each note rings until the next note on the same pitch.\n\n"
-                + "Best for piano, guitar and bass. Leave it off for instruments that should re-articulate every note."),
+            () => _loc.T("mst.set.forceSustain"),
+            () => _loc.T("mst.set.forceSustain.help")),
         HelpToggle("apply_tone",
             () => _bandApplyTone,
             OnToggleApplyTone,
-            () => "Apply tone / technique from MIDI instrument",
-            () => "Reads the GM instrument (program-change) on each MIDI track and applies the matching in-game tone/technique, "
-                + "switching live as the program changes. Off = every note plays Clean / Sustained.\n\n"
-                + "Set the track's MIDI instrument to get each effect:\n"
-                + "Guitar —\n"
-                + "  • Overdriven Guitar → Overdrive\n"
-                + "  • Distortion Guitar → Distortion\n"
-                + "  • Electric Guitar (muted) → Muffled\n"
-                + "  • Guitar Harmonics → Harmonics\n"
-                + "  • any other guitar → Clean\n"
-                + "Bass —\n"
-                + "  • Slap Bass 1 / 2 → Slap\n"
-                + "  • Synth Bass 1 / 2 → Overdrive\n"
-                + "  • any other bass → Clean\n"
-                + "Piano / drums / other → no effect (Clean / Sustained).\n\n"
-                + "The effect is clamped to what the summoned instrument supports (e.g. a guitar has no Slap; on a bass, "
-                + "Distortion falls back to Overdrive).\n\n"
-                + "Note: only ONE channel is read — the dominant one (the channel with the most notes). Program-changes on "
-                + "any other channel are ignored, so keep each stem to a single instrument channel for its tone to apply."),
+            () => _loc.T("mst.set.applyTone"),
+            () => _loc.T("mst.set.applyTone.help")),
         HelpToggle("net_prebuffer",
             () => _bandNetPrebuffer,
             v  => { _bandNetPrebuffer = v; _cfg.Set<bool>("net_prebuffer", v); _cfg.Save(); },
-            () => "Network Sync Mode",
-            () => "Builds the entire note timeline up front and plays it on a steady real-time clock instead of firing notes live.\n\n"
-                + "Strongly recommended: it removes the per-note timing jitter other players hear, and it is required for "
-                + "Mute local, the on-screen key animation, and every ensemble sync option below."),
+            () => _loc.T("mst.set.netSync"),
+            () => _loc.T("mst.set.netSync.help")),
         HelpToggle("mute_local",
             () => _bandMuteLocal,
             v  => { _bandMuteLocal = v; _bandPlayer.MuteLocal = v; _cfg.Set<bool>("mute_local", v); _cfg.Save(); },
-            () => "Mute my local sound",
+            () => _loc.T("mst.set.muteLocal"),
             () => _bandNetPrebuffer
-                ? "Silences the instrument on your client only — everyone else still hears every note you play.\n\n"
-                    + "Use it to perform in a group without the sound in your own ears."
-                : "Silences the instrument on your client only.\n\nRequires Network Sync mode — enable it first.",
+                ? _loc.T("mst.set.muteLocal.help.on")
+                : _loc.T("mst.set.muteLocal.help.off"),
             enabled: () => _bandNetPrebuffer),
         HelpToggle("show_keyviz",
             () => _bandShowKeyViz,
             v  => { _bandShowKeyViz = v; _bandPlayer.ShowKeyViz = v; _cfg.Set<bool>("show_keyviz", v); _cfg.Save(); },
-            () => "Show on-screen key animation",
-            () => "Shows the on-screen key / note animation as the auto-player performs, so you can see what it is pressing in real time.\n\n"
-                + "Requires Network Sync mode.",
+            () => _loc.T("mst.set.keyviz"),
+            () => _loc.T("mst.set.keyviz.help"),
             enabled: () => _bandNetPrebuffer),
-        new ButtonElement(Label: () => "Network Settings", OnClick: () => _networkWindow.SetVisible(true),
+        new ButtonElement(Label: () => _loc.T("mst.btn.netSettings"), OnClick: () => _networkWindow.SetVisible(true),
                           Enabled: () => _bandNetPrebuffer, Width: 320f),
         BuildEnsembleSection(),
     }, Gap: 8f);
@@ -389,20 +360,20 @@ public sealed partial class Plugin
 
     private string PlayPauseLabel()
     {
-        if (_bandPlayer.IsPlaying) return QueueSelectDiffers() ? "▶ Play" : "▮▮ Pause";
-        if (_bandPlayer.IsPaused)  return QueueSelectDiffers() ? "▶ Play" : "▶ Resume";
-        return "▶ Play";
+        if (_bandPlayer.IsPlaying) return QueueSelectDiffers() ? "▶ " + _loc.T("mst.play") : "▮▮ " + _loc.T("mst.pause");
+        if (_bandPlayer.IsPaused)  return QueueSelectDiffers() ? "▶ " + _loc.T("mst.play") : "▶ " + _loc.T("mst.resume");
+        return "▶ " + _loc.T("mst.play");
     }
 
     private void PlayPause()
     {
         bool switchSel = QueueSelectDiffers();
         if (_bandPlayer.IsPlaying && !switchSel) { _bandPlayer.Pause(); return; }   // pause current (needs nothing)
-        if (!IsBandViewOpen()) { _bandMidiStatus = "open Free Play (summon an instrument) first"; return; }
+        if (!IsBandViewOpen()) { _bandMidiStatus = _loc.T("mst.status.openFreePlay"); return; }
         if (switchSel) { PlayQueueIndex(_queueSel); return; }                       // play the selected song
         if (_bandPlayer.IsPaused) { _bandPlayer.Resume(); return; }
 
-        if (Active.Songs.Count == 0) { _bandMidiStatus = "queue is empty — add songs from the library"; return; }
+        if (Active.Songs.Count == 0) { _bandMidiStatus = _loc.T("mst.status.queueEmpty"); return; }
         PlayQueueIndex(_queueSel >= 0 ? _queueSel : (_nowPlaying >= 0 ? _nowPlaying : 0));
     }
 

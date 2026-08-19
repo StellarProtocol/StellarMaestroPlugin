@@ -37,11 +37,9 @@ public sealed partial class Plugin
             "if svc ~= nil then svc:SetInstrumentVolume(Panda.ZGame.EInstrumentVolumeType.IntToEnum(" + MonitorVolChannel + "), " + v + ") end end)");
     }
 
-    private HudElement BuildMonitorVolumeRow() => SliderRow("monitor_volume", () => "Monitor vol",
+    private HudElement BuildMonitorVolumeRow() => SliderRow("monitor_volume", () => _loc.T("mst.monitorVol"),
         new SliderElement(Get: () => _monitorVol, Set: v => SetMonitorVolume((int)System.MathF.Round(v)), Min: 0f, Max: 100f),
         () => $"{_monitorVol}",
         () => SetMonitorVolume(0),
-        () => "How loud you hear your OWN instrument through the ear-return (monitor) feed. Local only — it does not "
-            + "change what other players hear.\n\n"
-            + "You may need to enable \"Mute my local sound\" to avoid hearing your instrument doubled.");
+        () => _loc.T("mst.monitorVol.help"));
 }

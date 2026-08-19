@@ -9,18 +9,24 @@
     <NoWarn>CS8632;CS8765</NoWarn>
     <RootNamespace>Stellar.Maestro</RootNamespace>
     <AssemblyName>Stellar.Maestro</AssemblyName>
-    <Version>2.0.0</Version>
+    <Version>2.1.0</Version>
     <Deterministic>true</Deterministic>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Stellar.Abstractions"       Version="2.0.0" />
+    <!-- i18n P2: consumes IPluginServices.Localization (framework 2.1.0). -->
+    <PackageReference Include="Stellar.Abstractions"       Version="2.1.0" />
     <PackageReference Include="Stellar.Plugin.InteropRefs" Version="2.0.0" />
   </ItemGroup>
 
-  <!-- Launcher-tile icon (read by LogicalName). -->
+  <!-- Launcher-tile icon (read by LogicalName) + localization catalogs. -->
   <ItemGroup>
     <EmbeddedResource Include="Resources/maestro-icon.png" LogicalName="Stellar.Maestro.maestro-icon.png" />
+    <EmbeddedResource Include="Lang/en.json" LogicalName="Stellar.Maestro.Lang.en.json" />
+    <EmbeddedResource Include="Lang/ja.json" LogicalName="Stellar.Maestro.Lang.ja.json" />
+    <EmbeddedResource Include="Lang/th.json" LogicalName="Stellar.Maestro.Lang.th.json" />
+    <EmbeddedResource Include="Lang/id.json" LogicalName="Stellar.Maestro.Lang.id.json" />
+    <EmbeddedResource Include="Lang/fil.json" LogicalName="Stellar.Maestro.Lang.fil.json" />
   </ItemGroup>
 </Project>

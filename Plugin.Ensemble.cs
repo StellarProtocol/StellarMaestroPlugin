@@ -84,33 +84,25 @@ public sealed partial class Plugin
     private HudElement BuildEnsembleSection() => new ColumnElement(new HudElement[]
     {
         new SeparatorElement(),
-        new TextElement(() => "Ensemble", Emphasis: true),
+        new TextElement(() => _loc.T("mst.ens.header"), Emphasis: true),
         HelpToggle("ensemble_sync",
             () => _bandEnsembleSync,
             v  => { _bandEnsembleSync = v; _cfg.Set<bool>("ensemble_sync", v); _cfg.Save(); },
-            () => "Sync to ensemble",
-            () => "Sync your playback with the group so everyone plays in time. How to use:\n\n"
-                + "1. Enable this option.\n"
-                + "2. Each player picks a track and presses Play — the status will show \"waiting for ensemble…\".\n"
-                + "3. The party leader starts the ensemble, and everyone's playback syncs.\n\n"
-                + "Note: once it has synced, you can leave the ensemble if you want.\n"
-                + "Note: make sure every player uses the same Network Settings value — a mismatch can cause playback to go out of sync.",
+            () => _loc.T("mst.ens.sync"),
+            () => _loc.T("mst.ens.sync.help"),
             enabled: () => _bandNetPrebuffer),
         HelpToggle("ensemble_match_tempo",
             () => _bandEnsembleMatchTempo,
             v  => { _bandEnsembleMatchTempo = v; _cfg.Set<bool>("ensemble_match_tempo", v); _cfg.Save(); },
-            () => "Match ensemble tempo",
-            () => "On: the song is time-stretched to the ensemble's BPM and stays locked to it for the whole piece — no drift.\n\n"
-                + "Off: only the first downbeat is aligned (count-in); if the song's BPM differs from the ensemble's, "
-                + "playback slowly drifts out of sync.\n\nRequires Network Sync + Sync to ensemble.",
+            () => _loc.T("mst.ens.tempo"),
+            () => _loc.T("mst.ens.tempo.help"),
             enabled: () => _bandNetPrebuffer && _bandEnsembleSync),
         HelpToggle("auto_accept_ensemble",
             () => _bandAutoAcceptEnsemble,
             SetAutoAcceptEnsemble,
-            () => "Auto-accept ensemble invites",
-            () => "Automatically accepts incoming band-ensemble invitations, using the same reply the in-game Accept "
-                + "button sends.\n\nThe game's own preconditions apply: you must be in a team and have an instrument summoned."),
-        new TextElement(() => "Join or start an ensemble in-game first; playback then locks to its grid.",
+            () => _loc.T("mst.ens.autoAccept"),
+            () => _loc.T("mst.ens.autoAccept.help")),
+        new TextElement(() => _loc.T("mst.ens.footer"),
             Color: () => (ColorRgba?)_services.Theme.Colors.TextMuted),
     }, Gap: 6f);
 

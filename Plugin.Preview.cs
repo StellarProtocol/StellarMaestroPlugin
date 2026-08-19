@@ -45,11 +45,11 @@ public sealed partial class Plugin
 
     private HudElement BuildPreviewRoot() => new ColumnElement(new HudElement[]
     {
-        new TextElement(() => "MIDI Preview (local — game sound)", Emphasis: true),
+        new TextElement(() => _loc.T("mst.pv.header"), Emphasis: true),
         new RowElement(new HudElement[]
         {
             new CellElement(new ButtonElement(Label: PreviewPlayLabel, OnClick: PreviewPlayPause), Weight: 1f),
-            new CellElement(new ButtonElement(Label: () => "■ Stop", OnClick: StopPreview), Width: 80f),
+            new CellElement(new ButtonElement(Label: () => "■ " + _loc.T("mst.stop"), OnClick: StopPreview), Width: 80f),
         }, Gap: 4f),
         new RowElement(new HudElement[]
         {
@@ -60,41 +60,41 @@ public sealed partial class Plugin
         {
             new CellElement(new TextElement(() =>
                 _previewSynth.IsSyncing
-                    ? (_previewSynth.SyncWaiting ? "⏳ waiting for the band player to start…" : $"⟳ synced   [{string.Join(" ", _previewSynth.LoadedKeys)}]")
+                    ? (_previewSynth.SyncWaiting ? "⏳ " + _loc.T("mst.pv.waitBand") : $"⟳ {_loc.T("mst.pv.synced")}   [{string.Join(" ", _previewSynth.LoadedKeys)}]")
                     : (_previewSynth.IsPlaying || _previewSynth.IsPaused)
                         ? $"[{string.Join(" ", _previewSynth.LoadedKeys)}]"
-                        : "stopped — plays the selected queue song's stems",
+                        : _loc.T("mst.pv.stoppedHint"),
                 Color: () => (ColorRgba?)_services.Theme.Colors.TextMuted), Weight: 1f),
         }),
         new RowElement(new HudElement[]
         {
             new ToggleElement(Label: () => "", Get: () => _previewSync, Set: SetPreviewSync),
-            new TextElement(() => "Instrument Sync — wait for the band player, then follow it (mute the parts you'll play)"),
+            new TextElement(() => _loc.T("mst.pv.instSync")),
         }, Gap: 6f),
         new RowElement(new HudElement[]
         {
-            new CellElement(new TextElement(() => "Sync offset", Color: () => (ColorRgba?)_services.Theme.Colors.TextMuted), Width: 76f),
+            new CellElement(new TextElement(() => _loc.T("mst.pv.offset"), Color: () => (ColorRgba?)_services.Theme.Colors.TextMuted), Width: 76f),
             new CellElement(new SliderElement(Get: () => _previewSyncOffsetMs, Set: v => SetPreviewSyncOffset((int)MathF.Round(v)), Min: 0f, Max: 2000f), Weight: 1f),
             new CellElement(new TextElement(() => $"{_previewSyncOffsetMs}ms"), Width: 56f),
-            new CellElement(new ButtonElement(Label: () => "= band delay", OnClick: () => SetPreviewSyncOffset(ReadBandDelayMs())), Width: 104f),
+            new CellElement(new ButtonElement(Label: () => _loc.T("mst.pv.bandDelay"), OnClick: () => SetPreviewSyncOffset(ReadBandDelayMs())), Width: 104f),
         }, Gap: 6f),
-        new TextElement(() => "Sync only: delay the backing to line up with a networked monitor (tune by ear). 0 = in sync with your local sound.",
+        new TextElement(() => _loc.T("mst.pv.offset.desc"),
             Color: () => (ColorRgba?)_services.Theme.Colors.TextMuted),
         new ListElement(
             VisibleCount: () => Math.Min(PreviewStems().Count, PreviewSlotCount),
             Slots:        BuildPreviewSlots()),
 
         new SeparatorElement(),
-        new TextElement(() => "File naming", Emphasis: true),
-        new TextElement(() => "Give a song's stems the same name, ending in the instrument in ( ):",
+        new TextElement(() => _loc.T("mst.pv.fileNaming"), Emphasis: true),
+        new TextElement(() => _loc.T("mst.pv.fileNaming.desc"),
             Color: () => (ColorRgba?)_services.Theme.Colors.TextMuted),
         new TextElement(() => "   Song (Piano).mid   ·   Song (Guitar).mid",
             Color: () => (ColorRgba?)_services.Theme.Colors.TextMuted),
         new TextElement(() => "   Song (Bass).mid    ·   Song (Bass 2).mid   ·   Song (Drum).mid",
             Color: () => (ColorRgba?)_services.Theme.Colors.TextMuted),
-        new TextElement(() => "Each file gets its own row; duplicates like \"(Bass 2)\" are separate tracks (same bass sound).",
+        new TextElement(() => _loc.T("mst.pv.fileNaming.dup"),
             Color: () => (ColorRgba?)_services.Theme.Colors.TextMuted),
-        new TextElement(() => "Select any one in the queue — Preview loads the whole set.",
+        new TextElement(() => _loc.T("mst.pv.fileNaming.select"),
             Color: () => (ColorRgba?)_services.Theme.Colors.TextMuted),
     }, Gap: 6f);
 
@@ -123,11 +123,11 @@ public sealed partial class Plugin
             new CellElement(new TextElement(() => Cap(KeyAt())), Width: 92f),
             new DropdownElement(Selected: () => InstrumentIndex(ModeAt()), Options: () => InstrumentNames,
                 OnSelect: i => SelectInstrument(KeyAt(), i), Width: 72f),   // pick the instrument (overrides filename detection)
-            new CellElement(new ButtonElement(Label: () => NoSus() ? "Sustain: —" : "Sustain: " + PedalName(KeyAt()),
+            new CellElement(new ButtonElement(Label: () => NoSus() ? _loc.T("mst.pv.sustain") + ": —" : _loc.T("mst.pv.sustain") + ": " + PedalName(KeyAt()),
                 OnClick: () => { if (!NoSus()) CyclePedal(KeyAt()); }, Enabled: () => !NoSus()), Width: 108f),
             new ToggleElement(Label: () => "", Get: () => !NoTone() && _previewSynth.GetApplyTone(KeyAt()),
                 Set: v => { if (!NoTone()) _previewSynth.SetApplyTone(KeyAt(), v); }, Enabled: () => !NoTone()),
-            new CellElement(new TextElement(() => "Tone"), Width: 44f),
+            new CellElement(new TextElement(() => _loc.T("mst.pv.tone")), Width: 44f),
         }, Gap: 6f);
     }
 
@@ -180,9 +180,9 @@ public sealed partial class Plugin
 
     private string PedalName(string m) => _previewSynth.GetPedalMode(m) switch
     {
-        PreviewSynth.PedalHold => "Hold",
-        PreviewSynth.PedalOff  => "Off",
-        _                      => "File",
+        PreviewSynth.PedalHold => _loc.T("mst.pedal.hold"),
+        PreviewSynth.PedalOff  => _loc.T("mst.pedal.off"),
+        _                      => _loc.T("mst.pedal.file"),
     };
     private void CyclePedal(string m) => _previewSynth.SetPedalMode(m, _previewSynth.GetPedalMode(m) + 1);
 
@@ -190,11 +190,11 @@ public sealed partial class Plugin
     {
         if (_previewSynth.IsPlaying)
         {
-            if (_previewSynth.IsSyncing) return _previewSynth.SyncWaiting ? "▶ Waiting for band…" : "⟳ Synced — Stop";
-            return "❚❚ Pause";
+            if (_previewSynth.IsSyncing) return _previewSynth.SyncWaiting ? "▶ " + _loc.T("mst.pv.waitingBand") : "⟳ " + _loc.T("mst.pv.syncedStop");
+            return "❚❚ " + _loc.T("mst.pause");
         }
-        if (_previewSynth.IsPaused) return "▶ Resume";
-        return _previewSync ? "▶ Sync to band" : "▶ Preview";
+        if (_previewSynth.IsPaused) return "▶ " + _loc.T("mst.resume");
+        return _previewSync ? "▶ " + _loc.T("mst.pv.syncToBand") : "▶ " + _loc.T("mst.pv.preview");
     }
 
     private void PreviewPlayPause()
@@ -247,12 +247,12 @@ public sealed partial class Plugin
     private void PreviewCurrentSong()
     {
         int i = _queueSel >= 0 ? _queueSel : (_nowPlaying >= 0 ? _nowPlaying : 0);
-        if (i < 0 || i >= Active.Songs.Count) { _bandMidiStatus = "queue empty — add a song from the Library"; return; }
+        if (i < 0 || i >= Active.Songs.Count) { _bandMidiStatus = _loc.T("mst.status.queueEmptyPreview"); return; }
         var path = Path.Combine(BandMidiDir(), Active.Songs[i]);
         if (!File.Exists(path)) { _bandMidiStatus = $"missing file: {Active.Songs[i]}"; return; }
 
         var stems = StemsForSong(path);
-        if (stems.Count == 0) { _bandMidiStatus = "no stems found for that song"; return; }
+        if (stems.Count == 0) { _bandMidiStatus = _loc.T("mst.status.noStems"); return; }
 
         _previewSynth.Stop();
         _previewSynth.Load(stems);
@@ -260,8 +260,8 @@ public sealed partial class Plugin
             ? _previewSynth.PlaySynced(() => (_bandPlayer.IsPlaying, Math.Max(0, _bandPlayer.PositionMs - _previewSyncOffsetMs)))   // follow the band player (optionally offset)
             : _previewSynth.Play();
         _bandMidiStatus = ok
-            ? (_previewSync ? "preview armed — waiting for band" : $"preview: {string.Join("+", _previewSynth.LoadedKeys)}")
-            : "preview failed (see BepInEx log)";
+            ? (_previewSync ? _loc.T("mst.status.previewArmed") : $"preview: {string.Join("+", _previewSynth.LoadedKeys)}")
+            : _loc.T("mst.status.previewFailed");
     }
 
     // Every stem file sharing this song's base name (part before " (" / " ["), one entry per stem KEY (the label in the

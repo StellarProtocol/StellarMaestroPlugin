@@ -56,7 +56,7 @@ public sealed partial class Plugin
         w = _services.Windows.Register(new WindowRegistration(
             Spec: new WindowSpec(
                 Id:          "maestro.tip",
-                Title:       "Maestro — Help",
+                Title:       _loc.T("mst.win.help"),
                 DefaultRect: new WindowRect(_services.Framework.ScreenWidth - TipWidth - 20f, 20f, TipWidth, 0f),
                 Category:    WindowCategory.Tools,
                 Style:       WindowPanelStyle.GlassMenu)

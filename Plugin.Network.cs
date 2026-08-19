@@ -25,12 +25,12 @@ public sealed partial class Plugin
 
     private HudElement BuildNetworkRoot() => new ColumnElement(new HudElement[]
     {
-        new TextElement(() => "Buffered Network Sync", Emphasis: true),
-        new TextElement(() => "Notes are timestamped and streamed ahead so listeners hear a steadier performance. These knobs apply live.",
+        new TextElement(() => _loc.T("mst.net.header"), Emphasis: true),
+        new TextElement(() => _loc.T("mst.net.desc"),
             Color: () => (ColorRgba?)_services.Theme.Colors.TextMuted),
         new RowElement(new HudElement[]
         {
-            new CellElement(new TextElement(() => "Lookahead", Color: () => (ColorRgba?)_services.Theme.Colors.TextMuted), Width: 84f),
+            new CellElement(new TextElement(() => _loc.T("mst.net.lookahead"), Color: () => (ColorRgba?)_services.Theme.Colors.TextMuted), Width: 84f),
             new CellElement(new SliderElement(
                 Get: () => _bandAheadMs,
                 Set: v  => SetAhead((int)System.MathF.Round(v)),
@@ -38,11 +38,11 @@ public sealed partial class Plugin
             new CellElement(new TextElement(() => $"{_bandAheadMs}ms"), Width: 60f),
             new CellElement(new ButtonElement(Label: () => "↺", OnClick: () => SetAhead(400)), Width: 34f),
         }, Gap: 6f),
-        new TextElement(() => "How far ahead notes are sent (stay under the receiver's ~500ms buffer).",
+        new TextElement(() => _loc.T("mst.net.lookahead.desc"),
             Color: () => (ColorRgba?)_services.Theme.Colors.TextMuted),
         new RowElement(new HudElement[]
         {
-            new CellElement(new TextElement(() => "Send every", Color: () => (ColorRgba?)_services.Theme.Colors.TextMuted), Width: 84f),
+            new CellElement(new TextElement(() => _loc.T("mst.net.sendEvery"), Color: () => (ColorRgba?)_services.Theme.Colors.TextMuted), Width: 84f),
             new CellElement(new SliderElement(
                 Get: () => _bandBatchMs,
                 Set: v  => SetBatch((int)System.MathF.Round(v)),
@@ -50,7 +50,7 @@ public sealed partial class Plugin
             new CellElement(new TextElement(() => $"{_bandBatchMs}ms"), Width: 60f),
             new CellElement(new ButtonElement(Label: () => "↺", OnClick: () => SetBatch(100)), Width: 34f),
         }, Gap: 6f),
-        new TextElement(() => "Batch cadence — smaller = smoother local, more packets.",
+        new TextElement(() => _loc.T("mst.net.sendEvery.desc"),
             Color: () => (ColorRgba?)_services.Theme.Colors.TextMuted),
     }, Gap: 8f);
 }

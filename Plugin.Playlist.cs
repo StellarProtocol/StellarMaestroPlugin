@@ -124,22 +124,22 @@ public sealed partial class Plugin
     private void SetShuffle(bool v)     { _shuffle = v;     _cfg.Set<bool>("shuffle", v);      _cfg.Save(); }
     private void CycleLoop()            { _loopMode = (_loopMode + 1) % 3; _cfg.Set<int>("loop_mode", _loopMode); _cfg.Save(); }
     private void SetGap(int v)          { _gapSec = Math.Clamp(v, 0, 15); _cfg.Set<int>("gap_sec", _gapSec); _cfg.Save(); }
-    private string LoopName() => _loopMode == 1 ? "All" : _loopMode == 2 ? "One" : "Off";
+    private string LoopName() => _loopMode == 1 ? _loc.T("mst.loop.all") : _loopMode == 2 ? _loc.T("mst.loop.one") : _loc.T("mst.loop.off");
 
     // ---- playback ----
     private void PlayQueueIndex(int i)
     {
         _gapRemainMs = -1;   // cancel any pending between-song gap
         var songs = Active.Songs;
-        if (i < 0 || i >= songs.Count) { _bandMidiStatus = "playlist is empty"; return; }
-        if (!IsBandViewOpen()) { _bandMidiStatus = "open Free Play (summon an instrument) first"; return; }
+        if (i < 0 || i >= songs.Count) { _bandMidiStatus = _loc.T("mst.status.playlistEmpty"); return; }
+        if (!IsBandViewOpen()) { _bandMidiStatus = _loc.T("mst.status.openFreePlay"); return; }
 
         // Ensemble sync armed but not in an ensemble yet → hold; EnsembleWaitTick starts us when it goes live.
         if (_bandEnsembleSync && _bandNetPrebuffer && !EnsembleActive())
         {
             _ensembleWaitIdx = i;
             _ensembleWaiting = true;
-            _bandMidiStatus  = "waiting for ensemble to start…";
+            _bandMidiStatus  = _loc.T("mst.status.waitEnsemble");
             return;
         }
         _ensembleWaiting = false;
@@ -162,7 +162,7 @@ public sealed partial class Plugin
         _nowPlaying = i; _queueSel = i;
         string pedal = song.PedalCount > 0 ? $", pedal x{song.PedalCount}" : "";
         _bandSongInfo   = $"{song.Name}: {song.NoteCount} notes, {song.DurationMs / 1000.0:F1}s, range {NoteName(song.MinNote)}–{NoteName(song.MaxNote)}{pedal}";
-        _bandMidiStatus = "playing";
+        _bandMidiStatus = _loc.T("mst.status.playing");
     }
 
     private void PlayNext(bool auto)
@@ -270,12 +270,12 @@ public sealed partial class Plugin
             new CellElement(new ButtonElement(Label: () => "◀", OnClick: () => SelectPlaylist(-1)), Width: 34f),
             new CellElement(new TextElement(() => $"{Active.Name}  ({_plIdx + 1}/{_playlists.Count})", Emphasis: true), Weight: 1f),
             new CellElement(new ButtonElement(Label: () => "▶", OnClick: () => SelectPlaylist(+1)), Width: 34f),
-            new CellElement(new ButtonElement(Label: () => "+ New", OnClick: NewPlaylist),          Width: 64f),
-            new CellElement(new ButtonElement(Label: () => "Del",   OnClick: DeleteActivePlaylist), Width: 48f),
+            new CellElement(new ButtonElement(Label: () => "+ " + _loc.T("mst.pl.new"), OnClick: NewPlaylist),          Width: 64f),
+            new CellElement(new ButtonElement(Label: () => _loc.T("mst.pl.del"),   OnClick: DeleteActivePlaylist), Width: 48f),
         }, Gap: 4f),
         new RowElement(new HudElement[]
         {
-            new CellElement(new TextElement(() => "Name", Color: () => (ColorRgba?)_services.Theme.Colors.TextMuted), Width: 42f),
+            new CellElement(new TextElement(() => _loc.T("mst.pl.name"), Color: () => (ColorRgba?)_services.Theme.Colors.TextMuted), Width: 42f),
             new CellElement(new InputElement(
                 Get:    () => Active.Name,
                 Submit: RenameActivePlaylist), Weight: 1f),
@@ -283,9 +283,9 @@ public sealed partial class Plugin
         new RowElement(new HudElement[]
         {
             new CellElement(new TextElement(
-                () => Active.Songs.Count == 0 ? "Queue empty — add songs from Library →" : $"Queue ({Active.Songs.Count}) — click to select, ▶ to play",
+                () => Active.Songs.Count == 0 ? _loc.T("mst.pl.queueEmpty") : _loc.TFormat("mst.pl.queueCount", Active.Songs.Count),
                 Color: () => (ColorRgba?)_services.Theme.Colors.TextMuted), Weight: 1f),
-            new CellElement(new ButtonElement(Label: () => "+ Library", OnClick: OpenLibrary), Width: 96f),
+            new CellElement(new ButtonElement(Label: () => "+ " + _loc.T("mst.pl.library"), OnClick: OpenLibrary), Width: 96f),
         }, Gap: 6f),
         new VirtualListElement(
             Count:     () => Active.Songs.Count,
@@ -296,27 +296,27 @@ public sealed partial class Plugin
         { ResetScroll = () => { var r = _queueScrollReset; _queueScrollReset = false; return r; } },
         new RowElement(new HudElement[]
         {
-            new CellElement(new ButtonElement(Label: () => "Remove", OnClick: RemoveFromQueue), Weight: 1f),
+            new CellElement(new ButtonElement(Label: () => _loc.T("mst.pl.remove"), OnClick: RemoveFromQueue), Weight: 1f),
             new CellElement(new ButtonElement(Label: () => "▲",      OnClick: () => MoveQueue(-1)), Width: 40f),
             new CellElement(new ButtonElement(Label: () => "▼",      OnClick: () => MoveQueue(+1)), Width: 40f),
-            new CellElement(new ButtonElement(Label: () => "Clear",  OnClick: ClearQueue), Weight: 1f),
+            new CellElement(new ButtonElement(Label: () => _loc.T("mst.pl.clear"),  OnClick: ClearQueue), Weight: 1f),
         }, Gap: 4f),
         new RowElement(new HudElement[]
         {
             new ToggleElement(Label: () => "", Get: () => _autoAdvance, Set: SetAutoAdvance),
-            new CellElement(new TextElement(() => "Auto-advance"), Width: 96f),
-            new CellElement(new ButtonElement(Label: () => $"Loop: {LoopName()}", OnClick: CycleLoop), Weight: 1f),
+            new CellElement(new TextElement(() => _loc.T("mst.pl.autoAdvance")), Width: 96f),
+            new CellElement(new ButtonElement(Label: () => _loc.T("mst.pl.loop") + ": " + LoopName(), OnClick: CycleLoop), Weight: 1f),
             new ToggleElement(Label: () => "", Get: () => _shuffle, Set: SetShuffle),
-            new CellElement(new TextElement(() => "Shuffle"), Width: 60f),
+            new CellElement(new TextElement(() => _loc.T("mst.pl.shuffle")), Width: 60f),
         }, Gap: 6f),
         new RowElement(new HudElement[]
         {
-            new CellElement(new TextElement(() => "Gap between song", Color: () => (ColorRgba?)_services.Theme.Colors.TextMuted), Width: 128f),
+            new CellElement(new TextElement(() => _loc.T("mst.pl.gap"), Color: () => (ColorRgba?)_services.Theme.Colors.TextMuted), Width: 128f),
             new CellElement(new SliderElement(
                 Get: () => _gapSec,
                 Set: v  => SetGap((int)System.MathF.Round(v)),
                 Min: 0f, Max: 15f), Weight: 1f),
-            new CellElement(new TextElement(() => _gapSec == 0 ? "off" : $"{_gapSec}s"), Width: 48f),
+            new CellElement(new TextElement(() => _gapSec == 0 ? _loc.T("mst.off") : $"{_gapSec}s"), Width: 48f),
         }, Gap: 6f),
     }, Gap: 6f);
 }

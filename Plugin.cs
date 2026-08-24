@@ -70,6 +70,8 @@ public sealed partial class Plugin : IStellarPlugin
             IconKey: null,
             OnOpen:  () => { RescanMidiFolder(); window.SetVisible(true); })   // rescan the midi/ folder each open
         { Group = LauncherGroup.Plugin,
+          // Re-localize the tile title live on a language change (Title alone is a captured string).
+          TitleProvider = () => _loc.T("mst.title"),
           // Band tools are in-world only — hide the launcher tile outside the World phase.
           ShouldShow = () => _services.ClientState.Phase == GamePhase.World }));
 

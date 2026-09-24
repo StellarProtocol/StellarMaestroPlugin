@@ -135,6 +135,13 @@ public sealed partial class Plugin
             OnToggleApplyTone,
             () => _loc.T("mst.set.applyTone"),
             () => _loc.T("mst.set.applyTone.help")),
+        HelpToggle("relay_tone",
+            () => _bandRelayTone,
+            OnToggleRelayTone,
+            () => _loc.T("mst.set.relayTone"),
+            () => _loc.T("mst.set.relayTone.help"),
+            // Only meaningful in buffered Network Sync mode (it rewrites the buffered Tone record) with tone applied.
+            enabled: () => _bandNetPrebuffer && _bandApplyTone),
         HelpToggle("net_prebuffer",
             () => _bandNetPrebuffer,
             v  => { _bandNetPrebuffer = v; _cfg.Set<bool>("net_prebuffer", v); _cfg.Save(); },

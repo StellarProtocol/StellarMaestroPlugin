@@ -22,6 +22,12 @@ public sealed partial class MidiPlayer
         set { _applyTone = value; if (_playing) SeekInstrumentEffect(); }   // live: re-resolve from the current position
     }
 
+    // EXPERIMENTAL relay: the server drops the raw 1000xxx Tone id from the note stream but relays small ints, so when
+    // this is ON the buffered (B2) Tone sync record carries a remapped small int (raw id − 1000000: 1000000→0 … 1000006→6)
+    // that the Framework decodes back on the listener side. The LOCAL EntityInstrumentSetTone call keeps the RAW id (it
+    // drives our own audio). Only affects the network record's playParam. See Band-Instrument-Playback.md tone-relay §.
+    public bool RelayToneToListeners { get; set; }
+
     private int _effPlayCur;   // next program-change to apply LOCALLY (at play time)
     private int _effSendCur;   // next program-change to SEND over the network (buffered, ahead)
 
@@ -115,9 +121,12 @@ public sealed partial class MidiPlayer
 
     // B2: send the change as a TIMESTAMPED record (playTime = __b2base+ms), the same pipe/scheduling as notes.
     private void EmitNetSend(int toneCat, int techKind, long ms)
+        // Relay ON → remap the Tone record's playParam to the small int (timbre−1000000) the server will relay; the
+        // Framework listener decodes it back (raw = playParam + 1000000). OFF → keep the raw id (server drops it, same
+        // as vanilla). Encoding MUST match the Framework decode exactly.
         => _services.Lua.DoString("pcall(function() " + RESOLVE + Pick(toneCat, techKind) +
             "local vm=Z.VMMgr.GetVM('band') local tok=(v.cancelSource or Z.DataMgr.Get('band_data').CancelSource):CreateToken() " +
-            "local recs={{syncType=E.EInstrumentSyncType.Tone,playTime=__b2base+" + ms + ",playParam=timbre,playType=E.EInstrumentPlayType.Press,expectedSyncTime=0}," +
+            "local recs={{syncType=E.EInstrumentSyncType.Tone,playTime=__b2base+" + ms + ",playParam=" + (RelayToneToListeners ? "timbre-1000000" : "timbre") + ",playType=E.EInstrumentPlayType.Press,expectedSyncTime=0}," +
             "{syncType=E.EInstrumentSyncType.Technique,playTime=__b2base+" + ms + ",playParam=kind,playType=E.EInstrumentPlayType.Press,expectedSyncTime=0}} " +
             "Z.CoroUtil.create_coro_xpcall(function() vm:AsyncSendInstrumentSyncData(recs, tok) end)() end)");
 }

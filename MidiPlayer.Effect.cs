@@ -69,7 +69,9 @@ public sealed partial class MidiPlayer
         else EmitLiveApply(tc, tk);
     }
 
-    // Fire any program-change boundaries now due. Local at play time; buffered also sends the record ~lookahead ahead.
+    // Fire any program-change boundaries now due at PLAY time. In B2 this is LOCAL-ONLY (EmitLocalSet); the network
+    // send of these boundaries is pulled into SendBatchB2 (via _effSendCur) so tone/technique ride the SAME
+    // AsyncSendInstrumentSyncData batch as the notes and can be playTime-ordered ahead of them — not sent here.
     private void TickInstrumentEffect()
     {
         var pcs = _song?.ProgramChanges;
@@ -81,8 +83,6 @@ public sealed partial class MidiPlayer
                 var (tc, tk) = EffectAt(pcs[_effPlayCur].program);
                 EmitLocalSet(tc, tk); _effPlayCur++;
             }
-            while (_effSendCur < pcs.Count && pcs[_effSendCur].ms <= _realMs + _lookaheadMs)
-            { var (tc, tk) = EffectAt(pcs[_effSendCur].program); EmitNetSend(tc, tk, (long)Math.Round((double)pcs[_effSendCur].ms)); _effSendCur++; }
         }
         else
         {
@@ -91,14 +91,16 @@ public sealed partial class MidiPlayer
         }
     }
 
+    // Per-instrument tone (timbre id per tone category) + valid-technique maps. Shared by RESOLVE (below) AND the B2
+    // batch resolver in SendBatchB2 — keep the literals in ONE place so the two can't drift apart.
+    internal const string TT_LIT = "{[10001]={1000000,1000000,1000000},[10002]={1000001,1000002,1000003},[10003]={1000006,1000006,1000006},[10004]={1000004,1000005,1000005}}";
+    internal const string MM_LIT = "{[10001]={[1]=true},[10002]={[1]=true,[2]=true,[3]=true},[10003]={[1]=true},[10004]={[1]=true,[2]=true,[3]=true,[6]=true}}";
+
     // Resolves toneCat/techKind against the summoned instrument's config (adapts + clamps per instrument).
     private const string RESOLVE =
         "local v=Z.UIMgr:GetView('band_performance_main_pc') if v==nil then return end " +
         "local cfg=v:GetCurInstrumentConfig() if cfg==nil then return end local id=(math.floor)(cfg.ID) " +
-        "local TT={[10001]={1000000,1000000,1000000},[10002]={1000001,1000002,1000003}," +
-        "[10003]={1000006,1000006,1000006},[10004]={1000004,1000005,1000005}} " +
-        "local MM={[10001]={[1]=true},[10002]={[1]=true,[2]=true,[3]=true}," +
-        "[10003]={[1]=true},[10004]={[1]=true,[2]=true,[3]=true,[6]=true}} " +
+        "local TT=" + TT_LIT + " local MM=" + MM_LIT + " " +
         "local trow=TT[id] if trow==nil then return end ";
 
     private string Pick(int toneCat, int techKind) =>
@@ -119,14 +121,36 @@ public sealed partial class MidiPlayer
             "svc:EntityInstrumentSetTone(ent, timbre, true) " +
             "svc:EntityInstrumentSetTechnique(ent, (Panda.ZAudio.EPlayingTechnique.IntToEnum)(kind), true) end)");
 
-    // B2: send the change as a TIMESTAMPED record (playTime = __b2base+ms), the same pipe/scheduling as notes.
+    // B2: send the change as a TIMESTAMPED record (playTime = __b2base+led), the same pipe/scheduling as notes. Now only
+    // the SEEK/RESUME one-shot (push the tone/technique active at the new position immediately) — the continuous
+    // program-change boundaries are batched with the notes in SendBatchB2 (see there). Relay remap kept identical.
+    //
+    // The initial/seek tone gets the SAME ToneLeadMs lead as the mid-song batch (SendBatchB2), but WITHOUT the
+    // Math.Max(0, …) clamp used there. At song start ms≈0, so led = ms − lead is a small NEGATIVE offset relative to
+    // __b2base — the record is scheduled slightly BEFORE the song anchor. On the listener a past-due tone record applies
+    // immediately (before the first note at __b2base+0), so the tone swap settles before note 1 and a stale sticky tone
+    // (e.g. Distortion left by the previous song) no longer wins that first note. Mid-song boundaries stay clamped in
+    // SendBatchB2 (they're always ≥ lead); this path is the ONLY one allowed a negative offset, down to −ToneLeadMs.
     private void EmitNetSend(int toneCat, int techKind, long ms)
-        // Relay ON → remap the Tone record's playParam to the small int (timbre−1000000) the server will relay; the
-        // Framework listener decodes it back (raw = playParam + 1000000). OFF → keep the raw id (server drops it, same
-        // as vanilla). Encoding MUST match the Framework decode exactly.
-        => _services.Lua.DoString("pcall(function() " + RESOLVE + Pick(toneCat, techKind) +
+    {
+        // Relay ON → the Tone record DUAL-SENDS (forward-compat, player idea 2026-09-26 — see
+        // Band-Instrument-Playback.md tone-relay §): FIRST the mapped small int (timbre−1000000) the server relays and
+        // the Framework listener decodes back (raw = playParam + 1000000), THEN a SECOND Tone record carrying the RAW
+        // id. The raw one is a render no-op today (the server drops raw 1000xxx off the sync channel), kept as dormant
+        // insurance — if the devs ever fix the sync channel to relay+render raw ids it starts working with no plugin
+        // update. Benign overlap: the Framework decode acts only on small ints 0–6 and passes raw >6 through untouched,
+        // so both records resolve to the SAME id. OFF → single raw Tone record (server drops it, same as vanilla).
+        // The LOCAL EntityInstrumentSetTone (EmitLocalSet) always drives our own audio with the raw id — this only
+        // shapes the network record's playParam. Both Tone records share the note playTime; mapped id FIRST.
+        long led = ms - (long)Math.Round(_toneLeadMs);
+        string toneRecs = RelayToneToListeners
+            ? "{syncType=E.EInstrumentSyncType.Tone,playTime=__b2base+" + led + ",playParam=timbre-1000000,playType=E.EInstrumentPlayType.Press,expectedSyncTime=0}," +
+              "{syncType=E.EInstrumentSyncType.Tone,playTime=__b2base+" + led + ",playParam=timbre,playType=E.EInstrumentPlayType.Press,expectedSyncTime=0},"
+            : "{syncType=E.EInstrumentSyncType.Tone,playTime=__b2base+" + led + ",playParam=timbre,playType=E.EInstrumentPlayType.Press,expectedSyncTime=0},";
+        _services.Lua.DoString("pcall(function() " + RESOLVE + Pick(toneCat, techKind) +
             "local vm=Z.VMMgr.GetVM('band') local tok=(v.cancelSource or Z.DataMgr.Get('band_data').CancelSource):CreateToken() " +
-            "local recs={{syncType=E.EInstrumentSyncType.Tone,playTime=__b2base+" + ms + ",playParam=" + (RelayToneToListeners ? "timbre-1000000" : "timbre") + ",playType=E.EInstrumentPlayType.Press,expectedSyncTime=0}," +
-            "{syncType=E.EInstrumentSyncType.Technique,playTime=__b2base+" + ms + ",playParam=kind,playType=E.EInstrumentPlayType.Press,expectedSyncTime=0}} " +
+            "local recs={" + toneRecs +
+            "{syncType=E.EInstrumentSyncType.Technique,playTime=__b2base+" + led + ",playParam=kind,playType=E.EInstrumentPlayType.Press,expectedSyncTime=0}} " +
             "Z.CoroUtil.create_coro_xpcall(function() vm:AsyncSendInstrumentSyncData(recs, tok) end)() end)");
+    }
 }

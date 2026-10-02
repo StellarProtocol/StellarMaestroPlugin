@@ -33,14 +33,22 @@ public sealed partial class Plugin
     }
 
     // The compact "reset to default" control: the ↺ icon rendered via SpriteElement (full uv — a single standalone
-    // image) made clickable by a SelectableElement wrapper, mirroring the StatInspector/CooldownBar gear pattern.
-    // Kept in a fixed 34px cell (a bare SpriteElement under a SelectableElement would stretch to the cell width).
+    // image), kept SQUARE and made clickable by a SelectableElement wrapper, mirroring the StatInspector/CooldownBar
+    // gear pattern. Gotcha: both SelectableElement and CellElement force-expand their child's WIDTH to fill the cell
+    // (childControlWidth + childForceExpandWidth), but NOT its height — so a bare 16×16 sprite got stretched to the
+    // cell's inner width (~22px) while staying 16px tall → wider-than-tall squish. A RowElement does NOT force-expand
+    // (childForceExpandWidth=false), so nesting the sprite in a centred Row pins it to its intrinsic 16×16 no matter
+    // how wide the clickable chip is. The cell is also kept snug (28px ≈ 16 icon + 12 selectable h-padding) so the
+    // hover chip hugs the icon instead of leaving dead click area.
     private HudElement ResetIconButton(Action reset)
         => new CellElement(
             new SelectableElement(
-                new SpriteElement(() => ResetIconPng()!, new UvRect(0f, 0f, 1f, 1f), 16, 16),
+                new RowElement(new HudElement[]
+                {
+                    new SpriteElement(() => ResetIconPng()!, new UvRect(0f, 0f, 1f, 1f), 16, 16),
+                }, Justify: RowJustify.Center),
                 OnClick: reset),
-            Width: 34f);
+            Width: 28f);
 
     private IWindowControl _tipWindow = null!;
     private string _tipKey = "";   // which help entry the tip window is showing; "" = closed

@@ -122,7 +122,7 @@ public sealed partial class Plugin
         SliderRow("restrike_gap", () => _loc.T("mst.set.restrike"),
             new SliderElement(Get: () => _bandRestrikeGapMs, Set: v => SetRestrikeGap((int)System.MathF.Round(v)), Min: 0f, Max: 100f),
             () => _bandRestrikeGapMs == 0 ? _loc.T("mst.off") : $"{_bandRestrikeGapMs}ms",
-            () => SetRestrikeGap(0),
+            () => SetRestrikeGap(16),   // reset to the default (matches Plugin.cs config-load default + help text)
             () => _loc.T("mst.set.restrike.help")),
         BuildMonitorVolumeRow(),
         HelpToggle("force_sustain",

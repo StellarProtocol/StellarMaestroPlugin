@@ -20,11 +20,13 @@ public sealed partial class MidiPlayer
 {
     private double _lookaheadMs   = 400.0;  // how far ahead of playback to send records (under the ~500ms buffer)
     private double _sendIntervalMs = 100.0; // batch cadence
+    private double _toneLeadMs     = 120.0; // real-time LEAD stamped onto tone/technique setup records so the Wwise tone event-swap settles BEFORE the boundary note (see SendBatchB2)
     private readonly System.Text.StringBuilder _payload = new();
 
     // Live network tuning (exposed via the Network Settings window).
     public int NetLookaheadMs { get => (int)_lookaheadMs;    set => _lookaheadMs    = Math.Clamp(value, 100, 1500); }
     public int NetBatchMs     { get => (int)_sendIntervalMs; set => _sendIntervalMs = Math.Clamp(value, 16, 250); }
+    public int ToneLeadMs     { get => (int)_toneLeadMs;     set => _toneLeadMs     = Math.Clamp(value, 0, 500); }
 
     private enum CmdType : byte { Release = 0, PedalOff = 1, PedalOn = 2, Press = 3 } // value = same-time ordering
 
@@ -33,6 +35,23 @@ public sealed partial class MidiPlayer
         public readonly double RealMs; public readonly int Key; public readonly CmdType Type;
         public Cmd(double realMs, int key, CmdType type) { RealMs = realMs; Key = key; Type = type; }
     }
+
+    // Same-playTime tie-break class for a single B2 batch: setup before the notes it belongs to, in the order
+    // Tone → Technique → SustainPedal → Note (see SendBatchB2). A Tone/Technique pair rides as ONE item (rank Tone).
+    private enum B2Rank : byte { Tone = 0, Technique = 1, Pedal = 2, Note = 3 }
+
+    // One queued record for the merged B2 batch. Frag != null → a ready Lua record literal (note/pedal); Frag == null →
+    // a tone/technique pair resolved in Lua from (ToneCat, TechKind). Seq keeps the sort stable within equal (PlayTime, Rank).
+    private readonly struct B2Item
+    {
+        public readonly long PlayTime; public readonly B2Rank Rank; public readonly int Seq;
+        public readonly string? Frag; public readonly int ToneCat, TechKind;
+        public B2Item(long playTime, B2Rank rank, int seq, string frag)
+        { PlayTime = playTime; Rank = rank; Seq = seq; Frag = frag; ToneCat = 0; TechKind = 0; }
+        public B2Item(long playTime, int seq, int toneCat, int techKind)
+        { PlayTime = playTime; Rank = B2Rank.Tone; Seq = seq; Frag = null; ToneCat = toneCat; TechKind = techKind; }
+    }
+    private readonly List<B2Item> _batch = new();   // reusable scratch for the merged batch
 
     private bool   _netMode;                     // false = B1 (view sync), true = B2 (pre-buffered)
     private double _realMs;                      // real elapsed ms since Play (B2 clock; timeline already bakes tempo)
@@ -302,43 +321,109 @@ public sealed partial class MidiPlayer
 
     private void SendBatchB2()
     {
-        // Collect this tick's newly-due records (each advances _sendIdx once) and send them ONCE. Resending note-offs
-        // was tried and rejected: a duplicate ReleaseNote is not a silent no-op in the game's audio engine — it
-        // re-damps the note (audible flutter), even though it's idempotent in the note on/off logic. So every record
-        // is sent exactly once. See Band-Instrument-Playback.md. Same-pitch restrike collisions are handled upstream
-        // by the restrike gap in BuildTimeline, not here.
-        _payload.Clear();
-        // Force sustain: hold the pedal DOWN for the whole song — send exactly one SustainPedal down at song start
-        // (playTime=__b2base+0), never an up, and skip the song's own pedal records below.
+        // Collect this tick's newly-due records — notes, song pedal events, AND tone/technique program-change boundaries
+        // — into ONE batch, then send them ONCE, playTime-ordered. Merging tone/tech in here (instead of a separate
+        // AsyncSendInstrumentSyncData from EmitNetSend) fixes an audible transient at a tone+technique+note-coincident
+        // boundary: with two batches the receiver could apply a note with the OLD tone + NEW technique (undefined
+        // relative order). Each record still advances its cursor once and is sent exactly once — resending note-offs was
+        // tried and rejected (a duplicate ReleaseNote re-damps the note = audible flutter). Same-pitch restrike
+        // collisions are handled upstream by the restrike gap in BuildTimeline. See Band-Instrument-Playback.md.
+        _batch.Clear();
+        int seq = 0;
+
+        // Force sustain: hold the pedal DOWN for the whole song — one SustainPedal down at song start (playTime 0), never
+        // an up, and skip the song's own pedal records below. Ranked Pedal so a t=0 tone (none reaches here — seek
+        // already sent it) would still precede it; nothing else sits at t=0.
         if (_forceSustain && !_b2ForcePedalSent)
         {
             _b2ForcePedalSent = true;
-            _payload.Append("{syncType=E.EInstrumentSyncType.SustainPedal,playTime=__b2base+0,playParam=1,playType=E.EInstrumentPlayType.Press,expectedSyncTime=0},");
+            _batch.Add(new B2Item(0, B2Rank.Pedal, seq++,
+                "{syncType=E.EInstrumentSyncType.SustainPedal,playTime=__b2base+0,playParam=1,playType=E.EInstrumentPlayType.Press,expectedSyncTime=0}"));
         }
+
+        // Notes + song pedal events from the timeline (playType=Press always for pedal; up/down carried by playParam).
         while (_sendIdx < _timeline.Count && _timeline[_sendIdx].RealMs <= _realMs + _lookaheadMs)
         {
             var c = _timeline[_sendIdx++];
+            long pt = (long)Math.Round(c.RealMs);
             if (c.Type == CmdType.PedalOn || c.Type == CmdType.PedalOff)
             {
                 if (_forceSustain) continue;   // force-sustain: song's pedal events are skipped (one-shot down above covers it)
-                // Pedal rides the same timestamped stream as the notes. Pedal is ALWAYS playType=Press; up/down is
-                // carried by playParam (1=down for PedalOn, 0=up for PedalOff).
-                _payload.Append("{syncType=E.EInstrumentSyncType.SustainPedal,playTime=__b2base+")
-                        .Append((long)Math.Round(c.RealMs))
-                        .Append(",playParam=").Append(c.Type == CmdType.PedalOn ? 1 : 0)
-                        .Append(",playType=E.EInstrumentPlayType.Press,expectedSyncTime=0},");
+                _batch.Add(new B2Item(pt, B2Rank.Pedal, seq++,
+                    "{syncType=E.EInstrumentSyncType.SustainPedal,playTime=__b2base+" + pt +
+                    ",playParam=" + (c.Type == CmdType.PedalOn ? 1 : 0) +
+                    ",playType=E.EInstrumentPlayType.Press,expectedSyncTime=0}"));
                 continue;
             }
             if (c.Type != CmdType.Press && c.Type != CmdType.Release) continue;
-            _payload.Append("{syncType=E.EInstrumentSyncType.Note,playTime=__b2base+")
-                    .Append((long)Math.Round(c.RealMs))
-                    .Append(",playParam=").Append(c.Key)
-                    .Append(",playType=E.EInstrumentPlayType.").Append(c.Type == CmdType.Press ? "Press" : "Release")
-                    .Append(",expectedSyncTime=0},");
+            _batch.Add(new B2Item(pt, B2Rank.Note, seq++,
+                "{syncType=E.EInstrumentSyncType.Note,playTime=__b2base+" + pt +
+                ",playParam=" + c.Key +
+                ",playType=E.EInstrumentPlayType." + (c.Type == CmdType.Press ? "Press" : "Release") +
+                ",expectedSyncTime=0}"));
         }
 
-        if (_payload.Length == 0) return;
-        _services.Lua.DoString("pcall(function() Z.CoroUtil.create_coro_xpcall(function() local vm=Z.VMMgr.GetVM('band') local tok=Z.DataMgr.Get('band_data').CancelSource:CreateToken() vm:AsyncSendInstrumentSyncData({" + _payload + "}, tok) end)() end)");
+        // Tone/technique program-change boundaries due in the SAME window (advances _effSendCur — this is now the ONLY
+        // network emitter for continuous boundaries; TickInstrumentEffect only applies them locally). timbre/kind resolve
+        // in Lua below; C# just carries (toneCat, techKind, playTime).
+        var pcs = _song?.ProgramChanges;
+        bool hasTone = false;
+        long toneLead = (long)Math.Round(_toneLeadMs);
+        if (pcs != null)
+            while (_effSendCur < pcs.Count && pcs[_effSendCur].ms <= _realMs + _lookaheadMs)
+            {
+                var (tc, tk) = EffectAt(pcs[_effSendCur].program);
+                // Give the tone/technique event-swap a real-time LEAD: stamp the setup record's playTime toneLeadMs
+                // BEFORE its nominal boundary so the Wwise tone event-swap settles before the boundary note renders.
+                // Confirmed in-game the swap was landing one note LATE — batch-ordering alone (Tone→…→Note at equal
+                // playTime) isn't enough because the swap needs to happen earlier in REAL TIME, not just earlier in the
+                // batch array. Because the batch is playTime-sorted, the led record still sorts ahead of the boundary
+                // notes AND lands toneLeadMs earlier on the receiver's clock. Clamp to >= 0 so the lead never underflows
+                // the batch base (playTime = __b2base + offset; offset >= 0 ⇒ never before __b2base = song/batch start).
+                // The Tone AND Technique record share this led playTime in the Lua tone() helper (technique is instant,
+                // applying it a hair early is harmless and keeps the pair together). SustainPedal keeps its own timing.
+                long led = Math.Max(0, pcs[_effSendCur].ms - toneLead);
+                _batch.Add(new B2Item(led, seq++, tc, tk));
+                _effSendCur++; hasTone = true;
+            }
+
+        if (_batch.Count == 0) return;
+
+        // Order by playTime, then rank (Tone→Technique→SustainPedal→Note), then source order (Seq keeps it stable → note
+        // Release still precedes Press at equal playTime; song pedal off precedes on). We don't know if the game drain
+        // re-sorts by playTime, so emit FULL playTime order: a tone change sits before the notes AT its tick but after
+        // earlier-tick notes — correct whether the drain sorts or processes in array order.
+        _batch.Sort((a, b) =>
+        {
+            int c = a.PlayTime.CompareTo(b.PlayTime);
+            if (c != 0) return c;
+            c = ((byte)a.Rank).CompareTo((byte)b.Rank);
+            return c != 0 ? c : a.Seq.CompareTo(b.Seq);
+        });
+
+        _payload.Clear();
+        foreach (var it in _batch)
+        {
+            if (it.Frag != null) _payload.Append("recs[#recs+1]=").Append(it.Frag).Append(' ');
+            else _payload.Append("tone(").Append(it.ToneCat).Append(',').Append(it.TechKind).Append(',').Append(it.PlayTime).Append(") ");
+        }
+
+        // Resolver + tone() helper are emitted ONLY when the batch carries a tone/tech record. Both resolve timbre/kind
+        // against the summoned instrument (same TT/MM map as RESOLVE/Pick) and, crucially, NEVER abort the note send on
+        // failure — a nil trow just skips the tone records (unlike RESOLVE, which early-returns the whole call). The Tone
+        // playParam keeps the exact relay encoding (timbre-1000000 when relaying, raw timbre otherwise).
+        string resolver = hasTone
+            ? "local id,trow,MM do local v=Z.UIMgr:GetView('band_performance_main_pc') local cfg=v and v:GetCurInstrumentConfig() " +
+              "if cfg~=nil then id=(math.floor)(cfg.ID) local TT=" + TT_LIT + " MM=" + MM_LIT + " trow=TT[id] end end " +
+              "local function tone(tc,tk,pt) if trow==nil then return end local timbre=trow[tc+1] local kind=tk if not (MM[id] or {})[kind] then kind=1 end " +
+              "recs[#recs+1]={syncType=E.EInstrumentSyncType.Tone,playTime=__b2base+pt,playParam=" + (RelayToneToListeners ? "timbre-1000000" : "timbre") + ",playType=E.EInstrumentPlayType.Press,expectedSyncTime=0} " +
+              "recs[#recs+1]={syncType=E.EInstrumentSyncType.Technique,playTime=__b2base+pt,playParam=kind,playType=E.EInstrumentPlayType.Press,expectedSyncTime=0} end "
+            : "";
+
+        _services.Lua.DoString(
+            "pcall(function() local vm=Z.VMMgr.GetVM('band') local tok=Z.DataMgr.Get('band_data').CancelSource:CreateToken() local recs={} " +
+            resolver + _payload +
+            "if #recs>0 then Z.CoroUtil.create_coro_xpcall(function() vm:AsyncSendInstrumentSyncData(recs, tok) end)() end end)");
     }
 
     private void ReleaseAllHeldB2()

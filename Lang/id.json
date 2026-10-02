@@ -48,6 +48,8 @@
   "mst.set.forceSustain.help": "Menahan pedal sustain sepanjang lagu, sehingga tiap not berdengung sampai not berikutnya pada nada yang sama.\n\nTerbaik untuk piano, gitar, dan bass. Matikan untuk instrumen yang harus mengartikulasikan ulang tiap not.",
   "mst.set.applyTone": "Terapkan tone / teknik dari instrumen MIDI",
   "mst.set.applyTone.help": "Membaca instrumen GM (program-change) di tiap trek MIDI dan menerapkan tone/teknik dalam game yang cocok, beralih langsung saat program berubah. Mati = tiap not diputar Clean / Sustained.\n\nAtur instrumen MIDI trek untuk mendapatkan tiap efek:\nGitar —\n  • Overdriven Guitar → Overdrive\n  • Distortion Guitar → Distortion\n  • Electric Guitar (muted) → Muffled\n  • Guitar Harmonics → Harmonics\n  • gitar lain → Clean\nBass —\n  • Slap Bass 1 / 2 → Slap\n  • Synth Bass 1 / 2 → Overdrive\n  • bass lain → Clean\nPiano / drum / lain → tanpa efek (Clean / Sustained).\n\nEfek dibatasi pada yang didukung instrumen yang dipanggil (mis. gitar tak punya Slap; pada bass, Distortion jatuh ke Overdrive).\n\nCatatan: hanya SATU kanal yang dibaca — yang dominan (kanal dengan not terbanyak). Program-change di kanal lain diabaikan, jadi jaga tiap stem pada satu kanal instrumen agar tone-nya berlaku.",
+  "mst.set.relayTone": "Atasi bug relay tone server (eksperimental)",
+  "mst.set.relayTone.help": "Game memiliki bug di mana tone instrumen Anda (mis. Overdrive/Distortion gitar) sering tidak sampai ke pemain lain — mereka justru mendengar suara polos yang bersih (clean). Saat diaktifkan, fitur ini mengirim tone Anda melalui jalur alternatif agar tersampaikan dengan benar. Batasan: hanya pendengar yang juga menjalankan Stellar yang akan mendengar tone yang terkoreksi; pemain tanpa mod tetap mendengarnya polos. Eksperimental — mungkin berhenti bekerja jika game diperbarui.",
   "mst.set.netSync": "Mode Sinkron Jaringan",
   "mst.set.netSync.help": "Membangun seluruh linimasa not di awal dan memutarnya pada jam real-time yang stabil alih-alih menembakkan not secara langsung.\n\nSangat disarankan: menghilangkan jitter waktu per-not yang didengar pemain lain, dan diperlukan untuk Mute lokal, animasi tuts di layar, serta semua opsi sinkron ensembel di bawah.",
   "mst.set.muteLocal": "Bisukan suara lokal saya",
@@ -74,6 +76,8 @@
   "mst.net.lookahead.desc": "Seberapa jauh not dikirim lebih dulu (jaga di bawah bufer ~500md penerima).",
   "mst.net.sendEvery": "Kirim tiap",
   "mst.net.sendEvery.desc": "Irama batch — makin kecil = lokal makin mulus, paket makin banyak.",
+  "mst.net.tonelead": "Lead nada",
+  "mst.net.tonelead.desc": "Seberapa jauh sebelum not perubahan nada diterapkan, dalam ms — naikkan jika pergantian nada terdengar telat satu not bagi pendengar.",
 
   "mst.pl.new": "Baru",
   "mst.pl.del": "Hapus",

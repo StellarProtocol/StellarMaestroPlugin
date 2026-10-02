@@ -48,6 +48,8 @@
   "mst.set.forceSustain.help": "曲全体でサステインペダルを踏みっぱなしにし、各ノートを同じ音の次のノートまで響かせます。\n\nピアノ・ギター・ベースに最適。ノートごとに発音し直すべき楽器ではオフにしてください。",
   "mst.set.applyTone": "MIDI楽器からトーン／奏法を適用",
   "mst.set.applyTone.help": "各MIDIトラックのGM楽器（プログラムチェンジ）を読み取り、対応するゲーム内のトーン／奏法を適用します。プログラム変更に合わせてライブで切り替わります。オフ = すべてのノートがクリーン／サステインで演奏されます。\n\nトラックのMIDI楽器を設定して各エフェクトを得ます：\nギター —\n  • Overdriven Guitar → Overdrive\n  • Distortion Guitar → Distortion\n  • Electric Guitar (muted) → Muffled\n  • Guitar Harmonics → Harmonics\n  • その他のギター → Clean\nベース —\n  • Slap Bass 1 / 2 → Slap\n  • Synth Bass 1 / 2 → Overdrive\n  • その他のベース → Clean\nピアノ／ドラム／その他 → エフェクトなし（Clean／Sustained）。\n\nエフェクトは召喚した楽器が対応する範囲に制限されます（例：ギターにSlapはなく、ベースではDistortionはOverdriveにフォールバック）。\n\n注意：読み取られるチャンネルは1つ（ノート数が最も多い主チャンネル）のみです。他チャンネルのプログラムチェンジは無視されるため、トーンを適用したいステムは1楽器＝1チャンネルにしてください。",
+  "mst.set.relayTone": "サーバーのトーン中継バグを回避（実験的）",
+  "mst.set.relayTone.help": "ゲームには、あなたの楽器のトーン（例：ギターのOverdrive／Distortion）が他のプレイヤーに届かず、代わりに素のClean音で聞こえてしまうバグがあります。有効にすると、トーンを別の経路で送信し、正しく届くようにします。制限：補正されたトーンを聞けるのはStellarを実行しているリスナーのみで、MODを使っていないプレイヤーには引き続きCleanで聞こえます。実験的機能のため、ゲームがアップデートされると動作しなくなる場合があります。",
   "mst.set.netSync": "ネットワーク同期モード",
   "mst.set.netSync.help": "ノートのタイムラインを事前に構築し、ライブでノートを発火する代わりに一定のリアルタイムクロックで再生します。\n\n強く推奨：他プレイヤーに聞こえるノート単位のタイミングのブレを取り除きます。ローカルミュート、画面上のキーアニメーション、以下のすべての合奏同期オプションに必須です。",
   "mst.set.muteLocal": "自分のローカル音をミュート",
@@ -74,6 +76,8 @@
   "mst.net.lookahead.desc": "ノートをどれだけ先に送るか（受信側の約500msバッファ以内に収めてください）。",
   "mst.net.sendEvery": "送信間隔",
   "mst.net.sendEvery.desc": "バッチ間隔 — 小さいほどローカルは滑らか、パケットは増加。",
+  "mst.net.tonelead": "トーン先行",
+  "mst.net.tonelead.desc": "音符よりどれだけ早くトーン変更を適用するか（ms）— リスナー側でトーンの切り替えが1音遅れて聞こえる場合は大きくしてください。",
 
   "mst.pl.new": "新規",
   "mst.pl.del": "削除",

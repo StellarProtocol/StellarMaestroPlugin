@@ -38,6 +38,7 @@ public sealed partial class Plugin : IStellarPlugin
         _bandMuteLocal     = _cfg.Get<bool>("mute_local",      false);
         _bandShowKeyViz    = _cfg.Get<bool>("show_keyviz",     true);
         _bandApplyTone     = _cfg.Get<bool>("apply_tone",      false);
+        _bandRelayTone     = _cfg.Get<bool>("relay_tone",      false);   // experimental; off until 2-client validated
         _bandEnsembleSync       = _cfg.Get<bool>("ensemble_sync",        false);
         _bandEnsembleMatchTempo = _cfg.Get<bool>("ensemble_match_tempo", false);
         _bandAutoAcceptEnsemble = _cfg.Get<bool>("auto_accept_ensemble", false);
@@ -53,6 +54,7 @@ public sealed partial class Plugin : IStellarPlugin
         _bandPlayer.MuteLocal      = _bandMuteLocal;
         _bandPlayer.ShowKeyViz     = _bandShowKeyViz;
         _bandPlayer.ApplyToneTechnique = _bandApplyTone;
+        _bandPlayer.RelayToneToListeners = _bandRelayTone;
 
         LoadNetworkConfig();
         LoadPlaylists();

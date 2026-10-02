@@ -12,6 +12,44 @@ namespace Stellar.Maestro;
 public sealed partial class Plugin
 {
     private readonly Dictionary<string, (Func<string> Title, Func<string> Body)> _helpFns = new();
+
+    // Reset-icon PNG bytes, decoded once (the SpriteElement Func re-reads this ref every frame — never re-loads).
+    private byte[]? _resetIconPng;
+    private bool    _resetIconLoaded;
+
+    private byte[]? ResetIconPng()
+    {
+        if (!_resetIconLoaded)
+        {
+            _resetIconLoaded = true;   // latch regardless so a missing/corrupt resource doesn't re-read per frame
+            try
+            {
+                using var s = typeof(Plugin).Assembly.GetManifestResourceStream("Stellar.Maestro.icon_reset.png");
+                if (s != null) { using var ms = new System.IO.MemoryStream(); s.CopyTo(ms); _resetIconPng = ms.ToArray(); }
+            }
+            catch { }
+        }
+        return _resetIconPng;
+    }
+
+    // The compact "reset to default" control: the ↺ icon rendered via SpriteElement (full uv — a single standalone
+    // image), kept SQUARE and made clickable by a SelectableElement wrapper, mirroring the StatInspector/CooldownBar
+    // gear pattern. Gotcha: both SelectableElement and CellElement force-expand their child's WIDTH to fill the cell
+    // (childControlWidth + childForceExpandWidth), but NOT its height — so a bare 16×16 sprite got stretched to the
+    // cell's inner width (~22px) while staying 16px tall → wider-than-tall squish. A RowElement does NOT force-expand
+    // (childForceExpandWidth=false), so nesting the sprite in a centred Row pins it to its intrinsic 16×16 no matter
+    // how wide the clickable chip is. The cell is also kept snug (28px ≈ 16 icon + 12 selectable h-padding) so the
+    // hover chip hugs the icon instead of leaving dead click area.
+    private HudElement ResetIconButton(Action reset)
+        => new CellElement(
+            new SelectableElement(
+                new RowElement(new HudElement[]
+                {
+                    new SpriteElement(() => ResetIconPng()!, new UvRect(0f, 0f, 1f, 1f), 16, 16),
+                }, Justify: RowJustify.Center),
+                OnClick: reset),
+            Width: 28f);
+
     private IWindowControl _tipWindow = null!;
     private string _tipKey = "";   // which help entry the tip window is showing; "" = closed
     private const float TipWidth = 360f;
@@ -122,7 +160,7 @@ public sealed partial class Plugin
             new CellElement(new TextElement(label, Color: () => (ColorRgba?)_services.Theme.Colors.TextMuted), Width: SliderLabelW),
             new CellElement(slider, Weight: 1f),
             new CellElement(new TextElement(value), Width: 48f),
-            new CellElement(new ButtonElement(Label: () => "↺", OnClick: reset), Width: 34f),
+            ResetIconButton(reset),
             HelpDot(key, label, help),
         }, Gap: 6f);
 }

@@ -48,6 +48,8 @@
   "mst.set.forceSustain.help": "Hinahawakang nakababa ang sustain pedal sa buong kanta, kaya ang bawat nota ay tumutunog hanggang sa susunod na nota sa parehong pitch.\n\nPinakamainam para sa piano, guitar at bass. Iwanang off para sa mga instrumentong dapat mag-articulate muli sa bawat nota.",
   "mst.set.applyTone": "Ilapat ang tone / teknik mula sa instrumentong MIDI",
   "mst.set.applyTone.help": "Binabasa ang GM instrument (program-change) sa bawat MIDI track at inilalapat ang katugmang in-game na tone/technique, nagpapalit nang live habang nagbabago ang program. Off = bawat nota ay pinapatugtog na Clean / Sustained.\n\nItakda ang MIDI instrument ng track para makuha ang bawat epekto:\nGuitar —\n  • Overdriven Guitar → Overdrive\n  • Distortion Guitar → Distortion\n  • Electric Guitar (muted) → Muffled\n  • Guitar Harmonics → Harmonics\n  • anumang ibang guitar → Clean\nBass —\n  • Slap Bass 1 / 2 → Slap\n  • Synth Bass 1 / 2 → Overdrive\n  • anumang ibang bass → Clean\nPiano / drums / iba pa → walang epekto (Clean / Sustained).\n\nAng epekto ay nililimitahan sa kung ano ang sinusuportahan ng na-summon na instrumento (hal. ang guitar ay walang Slap; sa isang bass, ang Distortion ay bumabalik sa Overdrive).\n\nTandaan: iisang channel lang ang binabasa — ang nangingibabaw (ang channel na may pinakamaraming nota). Ang mga program-change sa anumang ibang channel ay hindi pinapansin, kaya panatilihin ang bawat stem sa iisang instrument channel para malapat ang tone nito.",
+  "mst.set.relayTone": "Lutasin ang bug sa pag-relay ng tone ng server (eksperimental)",
+  "mst.set.relayTone.help": "May bug ang laro kung saan ang tone ng instrumento mo (hal. Overdrive/Distortion ng gitara) ay madalas na hindi umaabot sa ibang manlalaro — payak at malinis (clean) na tunog ang naririnig nila. Kapag na-enable, ipinapadala nito ang tone mo sa ibang daan para maiparating ito nang tama. Limitasyon: ang mga tagapakinig lamang na gumagamit din ng Stellar ang makaririnig ng naitamang tone; ang mga manlalarong walang mod ay payak pa rin ang maririnig. Eksperimental — maaaring tumigil sa paggana kung ma-update ang laro.",
   "mst.set.netSync": "Network Sync Mode",
   "mst.set.netSync.help": "Binubuo nang buo ang note timeline sa simula at pinapatugtog ito sa isang matatag na real-time clock sa halip na magpaputok ng mga nota nang live.\n\nHigit na inirerekomenda: inaalis nito ang per-note timing jitter na naririnig ng ibang manlalaro, at kailangan ito para sa Mute local, ang on-screen key animation, at bawat ensemble sync option sa ibaba.",
   "mst.set.muteLocal": "I-mute ang lokal kong tunog",
@@ -74,6 +76,8 @@
   "mst.net.lookahead.desc": "Gaano kalayo sa unahan ipinapadala ang mga nota (manatili sa ilalim ng ~500ms buffer ng tumatanggap).",
   "mst.net.sendEvery": "Magpadala tuwing",
   "mst.net.sendEvery.desc": "Batch cadence — mas maliit = mas maayos na lokal, mas maraming packet.",
+  "mst.net.tonelead": "Lead ng tono",
+  "mst.net.tonelead.desc": "Gaano kaaga bago ang nota inilalapat ang pagbabago ng tono, sa ms — taasan ito kung huli nang isang nota ang paglipat ng tono para sa mga nakikinig.",
 
   "mst.pl.new": "Bago",
   "mst.pl.del": "Tanggal",

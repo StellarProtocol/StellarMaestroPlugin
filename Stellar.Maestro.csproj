@@ -23,6 +23,8 @@
   <!-- Launcher-tile icon (read by LogicalName) + localization catalogs. -->
   <ItemGroup>
     <EmbeddedResource Include="Resources/maestro-icon.png" LogicalName="Stellar.Maestro.maestro-icon.png" />
+    <!-- "Reset to default" glyph used by the compact ↺ buttons on the Settings/Network sliders. -->
+    <EmbeddedResource Include="Resources/icon_reset.png" LogicalName="Stellar.Maestro.icon_reset.png" />
     <EmbeddedResource Include="Lang/en.json" LogicalName="Stellar.Maestro.Lang.en.json" />
     <EmbeddedResource Include="Lang/ja.json" LogicalName="Stellar.Maestro.Lang.ja.json" />
     <EmbeddedResource Include="Lang/th.json" LogicalName="Stellar.Maestro.Lang.th.json" />

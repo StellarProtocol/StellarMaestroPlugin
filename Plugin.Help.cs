@@ -12,6 +12,36 @@ namespace Stellar.Maestro;
 public sealed partial class Plugin
 {
     private readonly Dictionary<string, (Func<string> Title, Func<string> Body)> _helpFns = new();
+
+    // Reset-icon PNG bytes, decoded once (the SpriteElement Func re-reads this ref every frame — never re-loads).
+    private byte[]? _resetIconPng;
+    private bool    _resetIconLoaded;
+
+    private byte[]? ResetIconPng()
+    {
+        if (!_resetIconLoaded)
+        {
+            _resetIconLoaded = true;   // latch regardless so a missing/corrupt resource doesn't re-read per frame
+            try
+            {
+                using var s = typeof(Plugin).Assembly.GetManifestResourceStream("Stellar.Maestro.icon_reset.png");
+                if (s != null) { using var ms = new System.IO.MemoryStream(); s.CopyTo(ms); _resetIconPng = ms.ToArray(); }
+            }
+            catch { }
+        }
+        return _resetIconPng;
+    }
+
+    // The compact "reset to default" control: the ↺ icon rendered via SpriteElement (full uv — a single standalone
+    // image) made clickable by a SelectableElement wrapper, mirroring the StatInspector/CooldownBar gear pattern.
+    // Kept in a fixed 34px cell (a bare SpriteElement under a SelectableElement would stretch to the cell width).
+    private HudElement ResetIconButton(Action reset)
+        => new CellElement(
+            new SelectableElement(
+                new SpriteElement(() => ResetIconPng()!, new UvRect(0f, 0f, 1f, 1f), 16, 16),
+                OnClick: reset),
+            Width: 34f);
+
     private IWindowControl _tipWindow = null!;
     private string _tipKey = "";   // which help entry the tip window is showing; "" = closed
     private const float TipWidth = 360f;
@@ -122,7 +152,7 @@ public sealed partial class Plugin
             new CellElement(new TextElement(label, Color: () => (ColorRgba?)_services.Theme.Colors.TextMuted), Width: SliderLabelW),
             new CellElement(slider, Weight: 1f),
             new CellElement(new TextElement(value), Width: 48f),
-            new CellElement(new ButtonElement(Label: () => "↺", OnClick: reset), Width: 34f),
+            ResetIconButton(reset),
             HelpDot(key, label, help),
         }, Gap: 6f);
 }

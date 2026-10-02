@@ -11,17 +11,21 @@ public sealed partial class Plugin
     private IWindowControl _networkWindow = null!;
     private int _bandAheadMs = 400;   // lookahead ms
     private int _bandBatchMs = 100;   // send-batch interval ms
+    private int _bandToneLeadMs = 120; // tone/technique real-time lead ms (fixes late-sounding tone switch at a boundary)
 
     private void LoadNetworkConfig()
     {
-        _bandAheadMs = _cfg.Get<int>("net_ahead_ms", 400);
-        _bandBatchMs = _cfg.Get<int>("net_batch_ms", 100);
+        _bandAheadMs    = _cfg.Get<int>("net_ahead_ms", 400);
+        _bandBatchMs    = _cfg.Get<int>("net_batch_ms", 100);
+        _bandToneLeadMs = _cfg.Get<int>("tone_lead_ms", 120);
         _bandPlayer.NetLookaheadMs = _bandAheadMs;
         _bandPlayer.NetBatchMs     = _bandBatchMs;
+        _bandPlayer.ToneLeadMs     = _bandToneLeadMs;
     }
 
-    private void SetAhead(int v)  { _bandAheadMs = Math.Clamp(v, 100, 1500); _bandPlayer.NetLookaheadMs = _bandAheadMs; _cfg.Set<int>("net_ahead_ms", _bandAheadMs); _cfg.Save(); }
-    private void SetBatch(int v)  { _bandBatchMs = Math.Clamp(v, 16, 250);   _bandPlayer.NetBatchMs     = _bandBatchMs; _cfg.Set<int>("net_batch_ms", _bandBatchMs); _cfg.Save(); }
+    private void SetAhead(int v)    { _bandAheadMs    = Math.Clamp(v, 100, 1500); _bandPlayer.NetLookaheadMs = _bandAheadMs;    _cfg.Set<int>("net_ahead_ms", _bandAheadMs);      _cfg.Save(); }
+    private void SetBatch(int v)    { _bandBatchMs    = Math.Clamp(v, 16, 250);   _bandPlayer.NetBatchMs     = _bandBatchMs;    _cfg.Set<int>("net_batch_ms", _bandBatchMs);      _cfg.Save(); }
+    private void SetToneLead(int v) { _bandToneLeadMs = Math.Clamp(v, 0, 500);    _bandPlayer.ToneLeadMs     = _bandToneLeadMs; _cfg.Set<int>("tone_lead_ms", _bandToneLeadMs);  _cfg.Save(); }
 
     private HudElement BuildNetworkRoot() => new ColumnElement(new HudElement[]
     {
@@ -51,6 +55,18 @@ public sealed partial class Plugin
             new CellElement(new ButtonElement(Label: () => "↺", OnClick: () => SetBatch(100)), Width: 34f),
         }, Gap: 6f),
         new TextElement(() => _loc.T("mst.net.sendEvery.desc"),
+            Color: () => (ColorRgba?)_services.Theme.Colors.TextMuted),
+        new RowElement(new HudElement[]
+        {
+            new CellElement(new TextElement(() => _loc.T("mst.net.tonelead"), Color: () => (ColorRgba?)_services.Theme.Colors.TextMuted), Width: 84f),
+            new CellElement(new SliderElement(
+                Get: () => _bandToneLeadMs,
+                Set: v  => SetToneLead((int)System.MathF.Round(v)),
+                Min: 0f, Max: 500f), Weight: 1f),
+            new CellElement(new TextElement(() => $"{_bandToneLeadMs}ms"), Width: 60f),
+            new CellElement(new ButtonElement(Label: () => "↺", OnClick: () => SetToneLead(120)), Width: 34f),
+        }, Gap: 6f),
+        new TextElement(() => _loc.T("mst.net.tonelead.desc"),
             Color: () => (ColorRgba?)_services.Theme.Colors.TextMuted),
     }, Gap: 8f);
 }

@@ -76,6 +76,8 @@
   "mst.net.lookahead.desc": "ノートをどれだけ先に送るか（受信側の約500msバッファ以内に収めてください）。",
   "mst.net.sendEvery": "送信間隔",
   "mst.net.sendEvery.desc": "バッチ間隔 — 小さいほどローカルは滑らか、パケットは増加。",
+  "mst.net.tonelead": "トーン先行",
+  "mst.net.tonelead.desc": "音符よりどれだけ早くトーン変更を適用するか（ms）— リスナー側でトーンの切り替えが1音遅れて聞こえる場合は大きくしてください。",
 
   "mst.pl.new": "新規",
   "mst.pl.del": "削除",

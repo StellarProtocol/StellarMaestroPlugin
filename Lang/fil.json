@@ -76,6 +76,8 @@
   "mst.net.lookahead.desc": "Gaano kalayo sa unahan ipinapadala ang mga nota (manatili sa ilalim ng ~500ms buffer ng tumatanggap).",
   "mst.net.sendEvery": "Magpadala tuwing",
   "mst.net.sendEvery.desc": "Batch cadence — mas maliit = mas maayos na lokal, mas maraming packet.",
+  "mst.net.tonelead": "Lead ng tono",
+  "mst.net.tonelead.desc": "Gaano kaaga bago ang nota inilalapat ang pagbabago ng tono, sa ms — taasan ito kung huli nang isang nota ang paglipat ng tono para sa mga nakikinig.",
 
   "mst.pl.new": "Bago",
   "mst.pl.del": "Tanggal",

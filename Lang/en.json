@@ -76,6 +76,8 @@
   "mst.net.lookahead.desc": "How far ahead notes are sent (stay under the receiver's ~500ms buffer).",
   "mst.net.sendEvery": "Send every",
   "mst.net.sendEvery.desc": "Batch cadence — smaller = smoother local, more packets.",
+  "mst.net.tonelead": "Tone lead",
+  "mst.net.tonelead.desc": "How far ahead of the note the tone change is applied, in ms — raise it if a tone switch sounds one note late for listeners.",
 
   "mst.pl.new": "New",
   "mst.pl.del": "Del",

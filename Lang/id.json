@@ -76,6 +76,8 @@
   "mst.net.lookahead.desc": "Seberapa jauh not dikirim lebih dulu (jaga di bawah bufer ~500md penerima).",
   "mst.net.sendEvery": "Kirim tiap",
   "mst.net.sendEvery.desc": "Irama batch — makin kecil = lokal makin mulus, paket makin banyak.",
+  "mst.net.tonelead": "Lead nada",
+  "mst.net.tonelead.desc": "Seberapa jauh sebelum not perubahan nada diterapkan, dalam ms — naikkan jika pergantian nada terdengar telat satu not bagi pendengar.",
 
   "mst.pl.new": "Baru",
   "mst.pl.del": "Hapus",

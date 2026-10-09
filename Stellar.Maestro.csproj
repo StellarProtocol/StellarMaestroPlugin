@@ -9,7 +9,7 @@
     <NoWarn>CS8632;CS8765</NoWarn>
     <RootNamespace>Stellar.Maestro</RootNamespace>
     <AssemblyName>Stellar.Maestro</AssemblyName>
-    <Version>2.2.0</Version>
+    <Version>2.3.0</Version>
     <Deterministic>true</Deterministic>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
   </PropertyGroup>
@@ -30,5 +30,6 @@
     <EmbeddedResource Include="Lang/th.json" LogicalName="Stellar.Maestro.Lang.th.json" />
     <EmbeddedResource Include="Lang/id.json" LogicalName="Stellar.Maestro.Lang.id.json" />
     <EmbeddedResource Include="Lang/fil.json" LogicalName="Stellar.Maestro.Lang.fil.json" />
+    <EmbeddedResource Include="Lang/ko.json" LogicalName="Stellar.Maestro.Lang.ko.json" />
   </ItemGroup>
 </Project>

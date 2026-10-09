@@ -66,13 +66,15 @@ public sealed partial class Plugin : IStellarPlugin
         _previewWindow  = RegisterWindow("maestro.preview",  _loc.T("mst.win.preview"),  5, BuildPreviewRoot());
         _tipWindow      = RegisterTipWindow();
         var window = RegisterWindow("maestro.main", _loc.T("mst.title"), 0, BuildBandRoot());
+        // Title stays the fixed literal "Maestro" — the stable pin-identity key (ILauncher.cs:49-50) —
+        // so a pinned tile survives a language change; TitleProvider carries the live-localized display.
         _launchers.Add(_services.Launcher.Register(new LauncherEntry(
-            Title:   _loc.T("mst.title"),
+            Title:   "Maestro",
             IconPng: LoadIconPng(),
             IconKey: null,
             OnOpen:  () => { RescanMidiFolder(); window.SetVisible(true); })   // rescan the midi/ folder each open
         { Group = LauncherGroup.Plugin,
-          // Re-localize the tile title live on a language change (Title alone is a captured string).
+          // Re-localize the tile DISPLAY on a language change; Title above never changes (pin identity).
           TitleProvider = () => _loc.T("mst.title"),
           // Band tools are in-world only — hide the launcher tile outside the World phase.
           ShouldShow = () => _services.ClientState.Phase == GamePhase.World }));

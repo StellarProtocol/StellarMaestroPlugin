@@ -104,13 +104,15 @@ public sealed partial class Plugin
     }
 
     // Part row: the song's RESOLVED instrument · tone (batch 1) — the running song, else the prepared next one; with
-    // no song context, what is equipped now (or the room's default).
+    // no song context, what the character really holds.
     private string LinkPartText()
     {
         var s = _lkRoomSong ?? _lkPrepSong;
         if (s?.InstrumentId is int si) return LinkEquipName(si, s.ToneId ?? 0);
-        int inst = _lkInstId > 0 ? _lkInstId : (_lkSet.InstrumentId ?? 0);
-        return inst <= 0 ? "—" : LinkEquipName(inst, LinkReportedTone());
+        int inst = _lkInstId;   // what is REALLY held (settings defaults are web pre-fill only)
+        if (inst <= 0) return "—";
+        int k = KnownTone();   // live tone unknown → instrument only (never a guessed tone)
+        return k != 0 ? LinkEquipName(inst, k) : LinkInstrumentName(inst);
     }
 
     // Next: the running song's `next`; with nothing running, the prepared (upcoming) song.

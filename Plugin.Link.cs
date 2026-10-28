@@ -42,7 +42,7 @@ public sealed partial class Plugin
     private readonly List<string> _lkWarnings = new();
     private bool   _lkBandViewOpen;
     private int    _lkInstId = -1;         // live GetPlayerInstrumentId (1 Hz cache); 0 = none, -1 = unreadable
-    private int    _lkToneId;              // live tone id (1 Hz cache); 0 = unknown
+    private int    _lkServerTone;          // DIAG: server-player tone read (attr 1201 path), 1 Hz; 0 = none — not reported until verified
 
     private bool IsLinked => _lkPhase == LinkPhase.Linked;
 
@@ -204,13 +204,17 @@ public sealed partial class Plugin
             case "closed":   EndLink(ClosedKeyFor(LinkSettings.Str(m, "reason") ?? "")); break;
             case "settings":
                 if (m.TryGetProperty("settings", out var s))
-                    OnLinkSettings(LinkSettings.Parse(s), LinkSettings.Str(m, "apply") ?? "now");
+                    OnLinkSettings(LinkSettings.Parse(s));   // `apply` ignored: settings never equip (§7.2)
                 break;
             case "prepare":  { var song = LinkSong.Parse(m); if (song != null) OnLinkPrepare(song); } break;
             case "play":     { var song = LinkSong.Parse(m); if (song != null) OnLinkPlay(song); } break;
             case "stop":     // scope part = our stem re-assigned away; room (or missing) = stop, or with paused:true = pause
                 if (LinkSettings.Str(m, "scope") == "part") OnLinkStopPart();
                 else OnLinkStop(LinkSettings.Bool(m, "paused") == true, LinkSettings.Int(m, "positionMs") ?? 0);
+                break;
+            case "equip":    // owner "equip now" (§7.3)
+                if (LinkSettings.Int(m, "instrumentId") is int ei) OnLinkEquip(ei, LinkSettings.Int(m, "toneId"), LinkSettings.Str(m, "playRange"));
+                else SendAck("equip", null, false, "bad_request");
                 break;
             case "ping":     { var p = LinkSettings.Int(m, "pingMs"); if (p != null) _lkPingMs = p.Value; } break;   // RTT from the previous pong
         }
@@ -244,8 +248,8 @@ public sealed partial class Plugin
         }
         else _services.Log.Info("[MaestroLink] reconnected");
 
-        // Settings first (in memory, no equip yet) so the song's equip sees the room's play range; then the song;
-        // then the equip check — a running song's RESOLVED instrument/tone wins over the defaults in `settings`.
+        // Settings first (in memory — settings never equip, §7.2) so the song's equip uses the room's play range; then the
+        // song, whose concrete equip (§7.4) is what we switch to.
         LinkSettings? set = m.TryGetProperty("settings", out var s) ? LinkSettings.Parse(s) : null;
         if (set != null) _lkSet = set;
         ApplyLinkPlayerSettings();
@@ -257,7 +261,7 @@ public sealed partial class Plugin
         if (m.TryGetProperty("song", out var sg) && LinkSong.Parse(sg) is { } song) OnLinkPlay(song);
         else if (m.TryGetProperty("paused", out var pz) && LinkSong.Parse(pz) is { } ps) OnLinkWelcomePaused(ps, LinkSettings.Int(pz, "positionMs") ?? 0);
         else if (!first && _lkRoomSong != null) OnLinkStop();
-        if (set != null) OnLinkSettings(set, "now", fromWelcome: true);
+        if (set != null) OnLinkSettings(set, fromWelcome: true);
     }
 
     // ---- status (protocol §2 ClientStatus) ----
@@ -267,9 +271,19 @@ public sealed partial class Plugin
     {
         _lkBandViewOpen = IsBandViewOpen();
         _lkInstId = ReadPlayerInstrumentId();
-        _services.Lua.DoString("pcall(function() rawset(_G,'__ml_tone',nil) local svc=Z.DIServiceMgr.InstrumentService local ent=Z.EntityMgr.PlayerEnt " +
-                               "if svc~=nil and ent~=nil and svc:GetPlayerInstrumentId()~=0 then rawset(_G,'__ml_tone', svc:EntityInstrumentGetTone(ent,true)) end end)");
-        _lkToneId = _services.Lua.TryReadGlobalNumber("__ml_tone", out double tone) ? (int)tone : 0;
+        // DIAG (protocol §7.5 research): EntityInstrumentGetTone(ent, isLocal:FALSE) reads the SERVER InstrumentPlayer,
+        // which applyInstrumentSettingsFromAttr seeds from the replicated AttrInstrumentSettings(1201) map — verified on
+        // REMOTE performers (KB Band-Instrument-Playback "server relays RAW tone ids…"), NOT yet on our own entity.
+        // Maestro's MIDI tone writes are isLocal:TRUE, so this read is not tainted by them. Logged on change only, not
+        // reported/decided on until in-game verified (the status must never guess). One Lua call per 1 Hz tick.
+        _services.Lua.DoString("pcall(function() rawset(_G,'__ml_stone',nil) local svc=Z.DIServiceMgr.InstrumentService local ent=Z.EntityMgr.PlayerEnt " +
+                               "if svc~=nil and ent~=nil and svc:GetPlayerInstrumentId()~=0 then rawset(_G,'__ml_stone', svc:EntityInstrumentGetTone(ent,false)) end end)");
+        int st = _services.Lua.TryReadGlobalNumber("__ml_stone", out double tone) ? (int)tone : 0;
+        if (st != _lkServerTone)
+        {
+            _lkServerTone = st;
+            _services.Log.Info($"[MaestroLink] diag server-player tone={st} inst={_lkInstId} knownEquipTone={KnownTone()}");
+        }
 
         _lkWarnings.Clear();
         if (!_lkBandViewOpen) _lkWarnings.Add("band_view_closed");
@@ -279,17 +293,23 @@ public sealed partial class Plugin
     }
 
     // Everything except serverNowMs/positionMs — compared each frame to send a status "immediately on any state change".
+    // §7.5 REAL equip: instrumentId = live GetPlayerInstrumentId (0 = nothing); toneId = our last successful equip's
+    // tone while still holding that instrument, else null (unknown — never a guess); equipTarget while equipping.
     private string BuildStatusCore()
-        => JsonSerializer.Serialize(new
+    {
+        int known = KnownTone();
+        return JsonSerializer.Serialize(new
         {
             state = LinkStateName(),
             instrumentId = Math.Max(0, _lkInstId),
-            toneId = LinkReportedTone(),   // RESOLVED: the tone we equipped (never 0 when we know it)
+            toneId = known != 0 ? known : (int?)null,
+            equipTarget = _lkEquipBusy ? new { instrumentId = _lkEquipTarget.Inst, toneId = _lkEquipTarget.Tone } : null,
             bandViewOpen = _lkBandViewOpen,
             bufferedMode = _bandPlayer.PreBufferedNet,
             songId = LinkStatusSongId(),
             warnings = _lkWarnings,
         });
+    }
 
     private void SendStatus(string core)
     {

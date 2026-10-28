@@ -45,8 +45,12 @@ public sealed partial class Plugin
     private LinkSettings _lkSet = new();
     private int  _lkTranspose;
     private bool _lkMonitorTouched;
+    private bool _lkPaused;               // stop {paused:true}: song kept on screen at _lkPausedPosMs, part stopped
+    private int  _lkPausedPosMs;
 
-    private static string LinkKey(LinkSong s) => s.SongId + "|" + s.StartAtServerMs.ToString(CultureInfo.InvariantCulture);
+    // A play is identified by song + T + P: same song with a different T (or P) = seek / resume = a NEW play.
+    private static string LinkKey(LinkSong s)
+        => s.SongId + "|" + s.StartAtServerMs.ToString(CultureInfo.InvariantCulture) + "|" + s.StartPositionMs.ToString(CultureInfo.InvariantCulture);
 
     // ---- server messages ----
 
@@ -59,11 +63,14 @@ public sealed partial class Plugin
             if (_lkRoomSong.StemUrl != song.StemUrl && !_lkPartActive)
             {
                 _lkRoomSong = _lkRoomSong.WithStem(song.StemUrl);
+                _lkRoomSong.InstrumentId = song.InstrumentId;
+                _lkRoomSong.ToneId = song.ToneId;
                 _lkPartDoneKey = "";
                 _lkStartAccumMs = double.MaxValue;
             }
         }
         else _lkPrepSong = song;
+        LinkSongEquip(song, fromPrepare: true);   // may hold the prepare ack until a per-song switch is done
         EnsureStem(song.SongId, song.StemUrl, ackPrepare: true);
     }
 
@@ -82,16 +89,20 @@ public sealed partial class Plugin
     private void OnLinkPlay(LinkSong song)
     {
         string key = LinkKey(song);
-        // The SAME song + T re-sent (reconnect / rejoin): not a "next play" — keep playing, keep a player stop or a
-        // finished part as they are, just refresh title/next/stem url.
-        if (_lkRoomSong != null && LinkKey(_lkRoomSong) == key
+        // The SAME song + T + P re-sent (reconnect / rejoin): not a "next play" — keep playing, keep a player stop or a
+        // finished part as they are, just refresh title/next/stem url (and re-equip if the song's equip changed).
+        if (!_lkPaused && _lkRoomSong != null && LinkKey(_lkRoomSong) == key
             && (_lkPartActive || _lkStoppedByPlayer || _lkPartDoneKey == key))
         {
             _lkRoomSong = song;
+            LinkSongEquip(song, fromPrepare: false);
             SendAck("play", song.SongId, true);
             return;
         }
+        // New play — including the same song with a different T/P (seek / resume): drop the current part first
+        // (StopLinked releases the notes listeners hold; what was already sent ahead still sounds — unavoidable).
         _lkStoppedByPlayer = false;
+        _lkPaused = false;
         if (_lkPartActive) StopLinkedPart();
 
         _lkRoomSong    = song;
@@ -100,17 +111,27 @@ public sealed partial class Plugin
         _lkPlayAckFailed = false;
         if (_lkPrepSong?.SongId == song.SongId) _lkPrepSong = null;
         if (song.StemUrl == null) { AckPlay(true); return; }   // no part this song: rest, stay in sync for the next one
+        LinkSongEquip(song, fromPrepare: false);   // its own song → switches right away; the part starts after
         EnsureStem(song.SongId, song.StemUrl, ackPrepare: false);
         _lkStartAccumMs = double.MaxValue;   // try on the next tick
     }
 
-    private void OnLinkStop()
+    // stop {scope:"room"}: room-wide stop — or, with paused:true, a PAUSE: stop the part but keep the song and its
+    // position on screen ("Paused"); the resume arrives as a `play` for the same song with a new T/P.
+    private void OnLinkStop(bool paused = false, int positionMs = 0)
     {
         StopLinkedPart();
-        _lkRoomSong = null;
-        _lkPrepSong = null;
         _lkStoppedByPlayer = false;
         _lkPlayAckKey = "";
+        if (paused && _lkRoomSong != null)
+        {
+            _lkPaused = true;
+            _lkPausedPosMs = positionMs;
+            return;
+        }
+        _lkPaused = false;
+        _lkRoomSong = null;
+        _lkPrepSong = null;
     }
 
     // "Stop my part": client-local; reported as stopped_by_player until the next `play`.
@@ -132,7 +153,7 @@ public sealed partial class Plugin
     private void LinkResetSongState()
     {
         _lkRoomSong = null; _lkPrepSong = null;
-        _lkStoppedByPlayer = false; _lkPartActive = false;
+        _lkStoppedByPlayer = false; _lkPartActive = false; _lkPaused = false;
         _lkPartKey = ""; _lkPartDoneKey = ""; _lkPlayAckKey = "";
         _lkStems.Clear();
         while (_lkStemResults.TryDequeue(out _)) { }
@@ -153,18 +174,19 @@ public sealed partial class Plugin
         if (_lkStems.TryGetValue(songId, out var e) && e.Url == url && e.Error == null)
         {
             if (!ackPrepare) return;
-            if (e.Loading) e.AckPrepare = true; else SendAck("prepare", songId, true);
+            e.AckPrepare = true;
+            TryAckPrepare(songId, e);
             return;
         }
         e = new LinkStem { Url = url, Order = ++_lkStemOrder, AckPrepare = ackPrepare };
         _lkStems[songId] = e;
         TrimStemCache();
-        if (url == null) { if (ackPrepare) SendAck("prepare", songId, true); e.AckPrepare = false; return; }
+        if (url == null) { TryAckPrepare(songId, e); return; }
 
         e.Loading = true;
         Uri uri;
-        try { uri = new Uri(_lkApiBase, url); }
-        catch { e.Loading = false; e.Error = "download_failed"; if (ackPrepare) SendAck("prepare", songId, false, e.Error); return; }
+        try { uri = new Uri(_lkApiBase, url); }   // absolute stemUrl wins; a path resolves against the API origin
+        catch { e.Loading = false; e.Error = "download_failed"; TryAckPrepare(songId, e); return; }
         string title = (_lkRoomSong?.SongId == songId ? _lkRoomSong.Title : _lkPrepSong?.Title) ?? songId;
         Task.Run(async () =>
         {
@@ -176,6 +198,15 @@ public sealed partial class Plugin
             try { _lkStemResults.Enqueue((songId, url, MidiParser.Parse(bytes, title), null)); }   // pure C#, no game access
             catch { _lkStemResults.Enqueue((songId, url, null, "bad_midi")); }
         });
+    }
+
+    // Ack a `prepare` once its stem is settled (parsed / failed / no part) AND no per-song equip switch is still owed
+    // for it (protocol batch 1: the ack is held until the switch is done — LinkEquipTick finishes it).
+    private void TryAckPrepare(string songId, LinkStem e)
+    {
+        if (!e.AckPrepare || e.Loading || songId == _lkEquipForSong) return;
+        e.AckPrepare = false;
+        SendAck("prepare", songId, e.Error == null, e.Error);
     }
 
     private void TrimStemCache()
@@ -197,7 +228,7 @@ public sealed partial class Plugin
             if (!_lkStems.TryGetValue(r.Id, out var e) || e.Url != r.Url) continue;   // superseded
             e.Loading = false; e.Song = r.Song; e.Error = r.Error;
             if (r.Error != null) _services.Log.Warning($"[MaestroLink] stem {r.Id}: {r.Error}");
-            if (e.AckPrepare) { SendAck("prepare", r.Id, r.Error == null, r.Error); e.AckPrepare = false; }
+            TryAckPrepare(r.Id, e);
         }
     }
 
@@ -214,18 +245,25 @@ public sealed partial class Plugin
         }
         long now = _services.CombatSnapshot.ServerNowMs;
         var song = _lkRoomSong;
-        if (song != null && !_lkPartActive && now > 0 && now > song.StartAtServerMs + song.DurationMs + 1500)
+        if (song != null && !_lkPaused && !_lkPartActive && now > 0 && now > song.StartAtServerMs + song.DurationMs + 1500)
             _lkRoomSong = song = null;   // the room's song is over (server schedules the next at end + 2 s)
 
-        if (!_lkPartActive) LinkPendingEquipTick();
+        LinkPendingEquipTick();   // a per-song switch held for "after the current song" runs once nothing is in progress
 
-        if (song == null || song.StemUrl == null || _lkPartActive || _lkStoppedByPlayer || LinkEquipBusy) return;
+        if (song == null || _lkPaused || song.StemUrl == null || _lkPartActive || _lkStoppedByPlayer || LinkEquipBusy) return;
         if (LinkKey(song) == _lkPartDoneKey) return;
         _lkStartAccumMs += dt * 1000.0;
         if (_lkStartAccumMs < 500) return;   // preconditions read Lua — ~2 Hz retry is plenty
         _lkStartAccumMs = 0;
         TryStartLinkedPart(song);
     }
+
+    // True while a room song we have a part in is running (until its end + 1.5 s clears _lkRoomSong) — a per-song
+    // equip switch must not run then ("never mid-song"), even if our own stem already ended (shorter stem): the
+    // character visibly swapping instruments mid-song would read as a glitch. Resting / paused / player-stopped = free.
+    private bool LinkSongInProgress()
+        => _lkPartActive
+           || (_lkRoomSong != null && !_lkPaused && _lkRoomSong.StemUrl != null && !_lkStoppedByPlayer);
 
     private void TryStartLinkedPart(LinkSong song)
     {
@@ -241,10 +279,13 @@ public sealed partial class Plugin
         ApplyLinkPlayerSettings();
         _bandPlayer.Load(stem.Song);
         long now  = _services.CombatSnapshot.ServerNowMs;   // read AFTER Load (Load/Stop can take real time)
-        long T    = song.StartAtServerMs;
-        long lead = _bandPlayer.NetLookaheadMs + 300;       // note 0 must be sendable a full lookahead early
-        // LATE JOIN (protocol §2 `play`): too close / past T → start at song position now − T + lead, base still T.
-        int startPos = now > T - lead ? (int)Math.Min(int.MaxValue, now - T + lead) : 0;
+        long T    = song.StartAtServerMs;                   // song position x sounds at T + x
+        int  P    = song.StartPositionMs;                   // this play starts at P (seek / resume; 0 = top)
+        long lead = _bandPlayer.NetLookaheadMs + 300;       // the first note must be sendable a full lookahead early
+        // Protocol §2 `play`: P sounds at T + P. LATE JOIN when now > T + P − lead: start at now − T + lead instead,
+        // base still T. Either way nothing before the start position is played or sent (MidiPlayer.SkipToKeepBase).
+        long late = now - T + lead;
+        int startPos = now > T + P - lead ? (int)Math.Min(int.MaxValue, Math.Max(late, P)) : P;
         if (startPos >= _bandPlayer.DurationMs)
         {
             _lkPartDoneKey = LinkKey(song);   // nothing of our part is left to play
@@ -256,111 +297,7 @@ public sealed partial class Plugin
         _lkPartKey    = LinkKey(song);
         AckPlay(true);
         LinkDiagRow($"START\t{now}\t{song.SongId}\t{T}\t{startPos}");
-        _services.Log.Info($"[MaestroLink] part start song={song.SongId} T={T} now={now} startPos={startPos}ms" +
-                           (startPos > 0 ? " (LATE JOIN)" : $" (count-in {T - now}ms)"));
-    }
-
-    // ---- settings ----
-
-    // Live/network/instant classes → MidiPlayer only (never the Plugin fields or config). Setters that rebuild the
-    // timeline are only touched on an actual change — with KeepBase on, the rebuild keeps T (MidiPlayer.Link.cs).
-    private void ApplyLinkPlayerSettings()
-    {
-        var s = _lkSet;
-        var p = _bandPlayer;
-        p.KeepBase       = true;
-        p.PreBufferedNet = true;   // forced while linked (protocol §3)
-        if (p.TempoPct != 100) p.TempoPct = 100;   // tempo is room-wide, fixed at 100 % in v1
-
-        int tr = Math.Clamp(s.Transpose ?? 0, -24, 24);
-        if (tr != _lkTranspose || p.Transpose != tr) { _lkTranspose = tr; p.Transpose = tr; }
-        int hold = s.HoldMs ?? 0;                          if (p.HoldOffsetMs != hold) p.HoldOffsetMs = hold;
-        int poly = Math.Clamp(s.MaxPoly ?? 16, 1, 16);     if (p.MaxPolyphony != poly) p.MaxPolyphony = poly;
-        int gap  = Math.Clamp(s.RestrikeGapMs ?? 16, 0, 100); if (p.RestrikeGapMs != gap) p.RestrikeGapMs = gap;
-        bool sus = s.ForceSustain ?? false;                if (p.ForceSustain != sus) p.ForceSustain = sus;
-
-        p.NetLookaheadMs       = s.NetAheadMs ?? 1500;
-        p.NetBatchMs           = s.NetBatchMs ?? 100;
-        p.ToneLeadMs           = s.ToneLeadMs ?? 120;
-        p.RelayToneToListeners = s.RelayTone ?? false;
-        bool tone = s.ApplyTone ?? true;                   if (p.ApplyToneTechnique != tone) p.ApplyToneTechnique = tone;
-
-        p.MuteLocal = s.MuteLocal ?? false;
-        if (s.MonitorVolume is int mv) { ApplyMonitorVolumeLive(Math.Clamp(mv, 0, 100)); _lkMonitorTouched = true; }
-    }
-
-    // Disconnect: hand the player back exactly as the user's own settings have it.
-    private void RestoreLocalPlayerSettings()
-    {
-        var p = _bandPlayer;
-        p.KeepBase    = false;
-        p.EnsembleGrid = false;
-        p.HoldOffsetMs = _bandHoldMs;
-        p.ForceSustain = _bandForceSustain;
-        p.TempoPct     = _bandTempoPct;
-        p.MaxPolyphony = _bandMaxPoly;
-        p.PreBufferedNet = _bandNetPrebuffer;
-        p.RestrikeGapMs  = _bandRestrikeGapMs;
-        p.MuteLocal      = _bandMuteLocal;
-        p.ApplyToneTechnique   = _bandApplyTone;
-        p.RelayToneToListeners = _bandRelayTone;
-        p.NetLookaheadMs = _bandAheadMs;
-        p.NetBatchMs     = _bandBatchMs;
-        p.ToneLeadMs     = _bandToneLeadMs;
-        p.Transpose      = _bandTranspose;
-        _lkSet = new LinkSettings();
-        _lkTranspose = 0;
-        if (_lkMonitorTouched)
-        {
-            _lkMonitorTouched = false;
-            // Re-apply the GAME's own persisted ear-return value (the room's value was applied live only, never saved).
-            _services.Lua.DoString(
-                "pcall(function() local v=Z.LocalUserDataMgr.GetFloatByLua(E.LocalUserDataType.Device, '" + MonitorVolKey + "', 0) " +
-                "local svc=Z.DIServiceMgr.InstrumentService " +
-                "if svc~=nil then svc:SetInstrumentVolume(Panda.ZGame.EInstrumentVolumeType.IntToEnum(" + MonitorVolChannel + "), v) end end)");
-        }
-    }
-
-    // Live-only monitor volume: same call as ApplyMonitorVolume minus the LocalUserDataMgr write, so the room's value
-    // never lands in the player's saved game setting.
-    private void ApplyMonitorVolumeLive(int v)
-        => _services.Lua.DoString(
-            "pcall(function() local svc=Z.DIServiceMgr.InstrumentService " +
-            "if svc~=nil then svc:SetInstrumentVolume(Panda.ZGame.EInstrumentVolumeType.IntToEnum(" + MonitorVolChannel + "), " +
-            v.ToString(CultureInfo.InvariantCulture) + ") end end)");
-
-    // ---- status helpers ----
-
-    private bool LinkResting
-    {
-        get
-        {
-            var s = _lkRoomSong ?? _lkPrepSong;
-            return s != null && s.StemUrl == null;
-        }
-    }
-
-    private string LinkStateName()
-    {
-        if (LinkEquipBusy) return "equipping";
-        if (_lkStoppedByPlayer) return "stopped_by_player";
-        if (_lkPartActive)
-            return _services.CombatSnapshot.ServerNowMs < (_lkRoomSong?.StartAtServerMs ?? 0) ? "countin" : "playing";
-        var s = _lkRoomSong ?? _lkPrepSong;
-        if (s == null || s.StemUrl == null) return "idle";   // resting = idle with songId set
-        if (!_lkStems.TryGetValue(s.SongId, out var e)) return "idle";
-        if (e.Loading) return "preparing";
-        if (e.Song == null) return "idle";
-        return s == _lkRoomSong && LinkKey(s) == _lkPartDoneKey ? "idle" : "ready";
-    }
-
-    private string? LinkStatusSongId() => (_lkRoomSong ?? _lkPrepSong)?.SongId;
-
-    private int LinkPositionMs()
-    {
-        var s = _lkRoomSong;
-        long now = _services.CombatSnapshot.ServerNowMs;
-        if (s == null || now <= 0) return 0;
-        return (int)Math.Clamp(now - s.StartAtServerMs, 0, Math.Max(0, s.DurationMs));
+        _services.Log.Info($"[MaestroLink] part start song={song.SongId} T={T} P={P} now={now} startPos={startPos}ms" +
+                           (startPos > P ? " (LATE JOIN)" : $" (count-in {T + P - now}ms)"));
     }
 }

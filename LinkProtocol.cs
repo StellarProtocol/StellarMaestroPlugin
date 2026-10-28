@@ -53,11 +53,18 @@ internal sealed class LinkSong
     public string Title  = "";
     public string? StemUrl;        // null = this character has no part in the song (stays silent, still in sync)
     public int    DurationMs;
-    public long   StartAtServerMs; // T — 0 for a `prepare`
+    public long   StartAtServerMs; // T — 0 for a `prepare`. Song position x sounds at T + x.
+    public int    StartPositionMs; // P — where this play starts (seek / resume); P sounds at T + P. 0 = from the top
+    public int?   InstrumentId;    // RESOLVED equip for THIS song (stem's own, else the player's default); null = no part
+    public int?   ToneId;          // 0 = the instrument's default tone; null = no part
     public string? Next;
 
     public LinkSong WithStem(string? stemUrl)
-        => new() { SongId = SongId, Title = Title, StemUrl = stemUrl, DurationMs = DurationMs, StartAtServerMs = StartAtServerMs, Next = Next };
+    {
+        var c = (LinkSong)MemberwiseClone();
+        c.StemUrl = stemUrl;
+        return c;
+    }
 
     public static LinkSong? Parse(JsonElement e)
     {
@@ -71,6 +78,9 @@ internal sealed class LinkSong
             StemUrl         = LinkSettings.Str(e, "stemUrl"),
             DurationMs      = LinkSettings.Int(e, "durationMs") ?? 0,
             StartAtServerMs = LinkSettings.Long(e, "startAtServerMs") ?? 0,
+            StartPositionMs = Math.Max(0, LinkSettings.Int(e, "startPositionMs") ?? 0),
+            InstrumentId    = LinkSettings.Int(e, "instrumentId"),
+            ToneId          = LinkSettings.Int(e, "toneId"),
             Next            = LinkSettings.Str(e, "next"),
         };
     }

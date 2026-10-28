@@ -15,10 +15,11 @@ namespace Stellar.Maestro;
 // config, UI state) runs on the main thread in LinkTick. Server time is always CombatSnapshot.ServerNowMs — never
 // reflect ZServerTime (Server-Clock-and-Ping-HUD.md: stalls the ping HUD + freezes day/night).
 //
-// Linked settings are in-memory overrides on the MidiPlayer only (Plugin.Link.Song.cs ApplyLinkPlayerSettings); the
+// Linked settings are in-memory overrides on the MidiPlayer only (Plugin.Link.Settings.cs ApplyLinkPlayerSettings); the
 // player's saved config / Plugin fields are never written, and Disconnect restores them (RestoreLocalPlayerSettings).
 //
-// Partials: Plugin.Link.cs (session + status) · Plugin.Link.Song.cs (prepare/play/settings) ·
+// Partials: Plugin.Link.cs (session + status) · Plugin.Link.Song.cs (prepare/play/stop, part lifecycle) ·
+//           Plugin.Link.Settings.cs (linked overrides + status helpers) ·
 //           Plugin.Link.Equip.cs (re-equip recipe) · Plugin.Link.Ui.cs (join form + status view).
 public sealed partial class Plugin
 {
@@ -207,7 +208,10 @@ public sealed partial class Plugin
                 break;
             case "prepare":  { var song = LinkSong.Parse(m); if (song != null) OnLinkPrepare(song); } break;
             case "play":     { var song = LinkSong.Parse(m); if (song != null) OnLinkPlay(song); } break;
-            case "stop":     if (LinkSettings.Str(m, "scope") == "part") OnLinkStopPart(); else OnLinkStop(); break;   // missing scope = room
+            case "stop":     // scope part = our stem re-assigned away; room (or missing) = stop, or with paused:true = pause
+                if (LinkSettings.Str(m, "scope") == "part") OnLinkStopPart();
+                else OnLinkStop(LinkSettings.Bool(m, "paused") == true, LinkSettings.Int(m, "positionMs") ?? 0);
+                break;
             case "ping":     { var p = LinkSettings.Int(m, "pingMs"); if (p != null) _lkPingMs = p.Value; } break;   // RTT from the previous pong
         }
     }
@@ -240,13 +244,18 @@ public sealed partial class Plugin
         }
         else _services.Log.Info("[MaestroLink] reconnected");
 
-        if (m.TryGetProperty("settings", out var s)) OnLinkSettings(LinkSettings.Parse(s), "now", fromWelcome: true);
-        else ApplyLinkPlayerSettings();
-        // welcome.song is the ONLY rejoin message on (re)connect: the running song with its T (stemUrl null = no part).
-        // OnLinkPlay downloads the stem and late-joins; the same song + T we're still playing is idempotent. No song
-        // on a RE-connect = the room stopped / moved on while we were away → end the stale part.
+        // Settings first (in memory, no equip yet) so the song's equip sees the room's play range; then the song;
+        // then the equip check — a running song's RESOLVED instrument/tone wins over the defaults in `settings`.
+        LinkSettings? set = m.TryGetProperty("settings", out var s) ? LinkSettings.Parse(s) : null;
+        if (set != null) _lkSet = set;
+        ApplyLinkPlayerSettings();
+        // welcome.song is the ONLY rejoin message on (re)connect: the running song with its T and P (stemUrl null = no
+        // part). OnLinkPlay downloads the stem and late-joins honouring startPositionMs; the same song + T + P we're
+        // still playing is idempotent. No song on a RE-connect = the room stopped / paused / moved on while we were
+        // away → end the stale part (welcome carries no paused state).
         if (m.TryGetProperty("song", out var sg) && LinkSong.Parse(sg) is { } song) OnLinkPlay(song);
         else if (!first && _lkRoomSong != null) OnLinkStop();
+        if (set != null) OnLinkSettings(set, "now", fromWelcome: true);
     }
 
     // ---- status (protocol §2 ClientStatus) ----

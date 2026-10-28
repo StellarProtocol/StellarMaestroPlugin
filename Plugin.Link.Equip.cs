@@ -21,11 +21,15 @@ public sealed partial class Plugin
     private const long LinkEquipTimeoutMs = 25_000;   // Lua's own waits: exit ≤ 3.3 s + equip 15 s
 
     private bool   _lkEquipBusy;
-    private bool   _lkEquipAck;                 // ack `settings` when this run finishes (not for welcome settings)
+    private bool   _lkEquipAck;                 // ack `settings` when this run finishes (not for welcome / per-song runs)
     private long   _lkEquipStartMs, _lkEquipPollMs;
     private LinkEquipTarget  _lkEquipTarget;
-    private LinkEquipTarget? _lkPendingEquip;   // apply:"next" — runs between songs
+    private LinkEquipTarget? _lkPendingEquip;   // held until no song is in progress (LinkSongInProgress)
+    private bool   _lkPendingAck;               // the pending run acks `settings`
+    private bool   _lkPendingAfterSong;         // pending waits for the current song to end (else: just for the busy run)
+    private LinkEquipTarget _lkEquipForSongTarget;
     private LinkEquipTarget? _lkLastEquipAttempt;
+    private string _lkEquipForSong = "";        // `prepare` whose ack waits for a per-song switch (TryAckPrepare)
 
     private bool LinkEquipBusy => _lkEquipBusy;
 
@@ -41,29 +45,64 @@ public sealed partial class Plugin
     private static int RangeIndex(string r) => r == "union" ? 1 : r == "team" ? 2 : 0;
     private static string RangeLua(string r) => r == "union" ? "Union" : r == "team" ? "Team" : "All";
 
+    private LinkEquipTarget TargetFor(int inst, int? tone)
+        => new(inst, tone is int t && t != 0 ? t : DefaultTone(inst), (_lkSet.PlayRange ?? "all").ToLowerInvariant());
+
+    // The song that decides the equip right now: the running song if we have a part in it, else the prepared next
+    // song (when nothing runs). Its RESOLVED instrument/tone (batch 1) wins over the player's defaults in `settings`.
+    private LinkSong? LinkEquipSong()
+    {
+        if (_lkRoomSong != null) return _lkRoomSong.StemUrl != null && _lkRoomSong.InstrumentId != null ? _lkRoomSong : null;
+        return _lkPrepSong is { StemUrl: not null, InstrumentId: not null } p ? p : null;
+    }
+
     private void OnLinkSettings(LinkSettings s, string apply, bool fromWelcome = false)
     {
         _lkSet = s;   // each `settings` carries the full PlayerSettings
         ApplyLinkPlayerSettings();   // instant / live / network classes take effect right away
 
-        int inst = s.InstrumentId ?? 10001;
-        var want = new LinkEquipTarget(inst, s.ToneId is int t && t != 0 ? t : DefaultTone(inst),
-                                       (s.PlayRange ?? "all").ToLowerInvariant());
+        // instrumentId/toneId are the player's DEFAULTS (protocol §3); a song with a resolved equip overrides them.
+        var song = LinkEquipSong();
+        var want = song != null ? TargetFor(song.InstrumentId!.Value, song.ToneId) : TargetFor(s.InstrumentId ?? 10001, s.ToneId);
         bool need = want != _lkLastEquipAttempt && !EquippedMatches(want);
         if (!need)
         {
-            if (apply == "next") _lkPendingEquip = null;   // a newer setting cancels a pending switch back
             if (!fromWelcome) SendAck("settings", null, true);
             return;
         }
-        if (apply == "next" && _lkPartActive)
+        // The server only sends apply:"now" (it holds "next" itself); a "next" still waits for the song to end.
+        if (apply == "next" && LinkSongInProgress())
         {
-            _lkPendingEquip = want;   // LinkPendingEquipTick runs it once the part is no longer playing
+            _lkPendingEquip = want; _lkPendingAck = true; _lkPendingAfterSong = true;
             _services.Log.Info($"[MaestroLink] re-equip queued for next song: {want}");
             return;
         }
         _lkPendingEquip = null;
         StartLinkEquip(want, ack: !fromWelcome);
+    }
+
+    // Per-song equip switch (protocol batch 1): `prepare`/`play` carry the RESOLVED instrument/tone for that song.
+    //   • for the running song (rejoin / re-assigned back / play) → switch now, the part starts after;
+    //   • for the NEXT song while the current one is in progress → only after it ends — never mid-song;
+    //   • nothing in progress → switch now.
+    // A `prepare` that needs a switch has its ack held until the switch finishes (ok, or equip_failed).
+    private void LinkSongEquip(LinkSong song, bool fromPrepare)
+    {
+        if (song.InstrumentId is not int inst || song.StemUrl == null) return;   // no part → nothing to equip
+        var want = TargetFor(inst, song.ToneId);
+        if (_lkEquipBusy && _lkEquipTarget == want) { if (fromPrepare) { _lkEquipForSong = song.SongId; _lkEquipForSongTarget = want; } return; }
+        if (!_lkEquipBusy && EquippedMatches(want)) { if (_lkPendingEquip != null && fromPrepare) _lkPendingEquip = null; return; }
+
+        if (fromPrepare) { _lkEquipForSong = song.SongId; _lkEquipForSongTarget = want; }
+        bool forRunning = _lkRoomSong != null && _lkRoomSong.SongId == song.SongId;
+        if (!forRunning && LinkSongInProgress())
+        {
+            _lkPendingEquip = want; _lkPendingAck = false; _lkPendingAfterSong = true;
+            _services.Log.Info($"[MaestroLink] switch to {want} after the current song (for {song.SongId})");
+            return;
+        }
+        _lkPendingEquip = null;
+        StartLinkEquip(want, ack: false);
     }
 
     // Live check against the game (instrument id + tone + the CurPlayRange the next equip would use). Tone 0 = not
@@ -78,14 +117,14 @@ public sealed partial class Plugin
 
     private void LinkPendingEquipTick()
     {
-        if (_lkPendingEquip is not { } p || _lkEquipBusy) return;
+        if (_lkPendingEquip is not { } p || _lkEquipBusy || (_lkPendingAfterSong && LinkSongInProgress())) return;
         _lkPendingEquip = null;
-        StartLinkEquip(p, ack: true);
+        StartLinkEquip(p, ack: _lkPendingAck);
     }
 
     private void StartLinkEquip(LinkEquipTarget w, bool ack)
     {
-        if (_lkEquipBusy) { _lkPendingEquip = w; return; }   // finish the running one first, then this
+        if (_lkEquipBusy) { _lkPendingEquip = w; _lkPendingAck = ack; _lkPendingAfterSong = false; return; }   // finish the running one first, then this
         StopLinkedPart();   // apply:"now" — our part drops; LinkPartTick rejoins the running song in sync afterwards
         _lkEquipBusy = true;
         _lkEquipAck = ack;
@@ -135,8 +174,22 @@ public sealed partial class Plugin
         _lkEquipBusy = false;
         _services.Log.Info($"[MaestroLink] equip {(done ? "done" : "FAILED")} ({s}) target={_lkEquipTarget}");
         if (_lkEquipAck) SendAck("settings", null, done, done ? null : "equip_failed");
+        if (_lkEquipForSong.Length > 0 && _lkEquipTarget == _lkEquipForSongTarget) FinishSongEquip(done);
         _lkWarnAccumMs = 1000;    // refresh instrument/tone/band-view on the next tick
         _lkStartAccumMs = 1000;   // and rejoin the running song right away (late-join path)
+    }
+
+    // The per-song switch a `prepare` was waiting on has finished: release its ack — ok (once the stem is settled), or
+    // equip_failed (the server then rests this part for that song with stop {scope:"part"}).
+    private void FinishSongEquip(bool done)
+    {
+        string songId = _lkEquipForSong;
+        _lkEquipForSong = "";
+        if (!_lkStems.TryGetValue(songId, out var e)) { SendAck("prepare", songId, done, done ? null : "equip_failed"); return; }
+        if (done) { TryAckPrepare(songId, e); return; }
+        if (!e.AckPrepare) return;
+        e.AckPrepare = false;
+        SendAck("prepare", songId, false, "equip_failed");
     }
 
     // Disconnect: abandon a run in flight (the coroutine finishes harmlessly on its own) and give the player's own
@@ -146,6 +199,7 @@ public sealed partial class Plugin
         _lkEquipBusy = false;
         _lkPendingEquip = null;
         _lkLastEquipAttempt = null;
+        _lkEquipForSong = "";
         _services.Lua.DoString("pcall(function() local p=rawget(_G,'__ml_prevRange') if p~=nil then " +
                                "Z.DataMgr.Get('band_data').CurPlayRange=p rawset(_G,'__ml_prevRange',nil) end end)");
     }

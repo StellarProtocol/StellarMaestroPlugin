@@ -80,8 +80,10 @@ public sealed partial class Plugin
         LinkRow(() => _loc.T("mst.link.next"), LinkNextText),
         new ConditionalElement(() => LinkCountInSec() > 0,
             new TextElement(() => _loc.TFormat("mst.link.countIn", LinkCountInSec()), Emphasis: true, Align: TextAlign.Center, FontSize: 22)),
-        new ConditionalElement(() => LinkWarningKey().Length > 0,
-            new TextElement(() => { var k = LinkWarningKey(); return k.Length > 0 ? _loc.T(k) : ""; }, Color: Warn)),
+        new ConditionalElement(() => _lkPaused && _lkRoomSong != null,
+            new TextElement(() => _loc.T("mst.link.paused"), Emphasis: true, Align: TextAlign.Center)),
+        new ConditionalElement(() => LinkWarningText().Length > 0,
+            new TextElement(LinkWarningText, Color: Warn)),
         new SeparatorElement(),
         new RowElement(new HudElement[]
         {
@@ -94,12 +96,21 @@ public sealed partial class Plugin
     private string LinkPingText()
         => !_lkOnline ? _loc.T("mst.link.reconnecting") : _lkPingMs >= 0 ? _loc.TFormat("mst.link.ping", _lkPingMs) : "";
 
+    // "Piano · Acoustic" — toneId 0 / unknown → the instrument's default tone.
+    private string LinkEquipName(int inst, int tone)
+    {
+        string t = LinkToneName(tone != 0 ? tone : DefaultTone(inst));
+        return t.Length > 0 ? $"{LinkInstrumentName(inst)} · {t}" : LinkInstrumentName(inst);
+    }
+
+    // Part row: the song's RESOLVED instrument · tone (batch 1) — the running song, else the prepared next one; with
+    // no song context, what is equipped now (or the room's default).
     private string LinkPartText()
     {
+        var s = _lkRoomSong ?? _lkPrepSong;
+        if (s?.InstrumentId is int si) return LinkEquipName(si, s.ToneId ?? 0);
         int inst = _lkInstId > 0 ? _lkInstId : (_lkSet.InstrumentId ?? 0);
-        if (inst <= 0) return "—";
-        string tone = LinkToneName(_lkToneId != 0 ? _lkToneId : DefaultTone(inst));
-        return tone.Length > 0 ? $"{LinkInstrumentName(inst)} · {tone}" : LinkInstrumentName(inst);
+        return inst <= 0 ? "—" : LinkEquipName(inst, _lkToneId);
     }
 
     // Next: the running song's `next`; with nothing running, the prepared (upcoming) song.
@@ -115,23 +126,25 @@ public sealed partial class Plugin
         return d > 0 ? Math.Clamp((float)LinkPositionMs() / d, 0f, 1f) : 0f;
     }
 
+    // Seconds until this play's first position (P) sounds at T + P; 0 = not counting in.
     private int LinkCountInSec()
     {
         var s = _lkRoomSong;
         long now = _services.CombatSnapshot.ServerNowMs;
-        if (s == null || now <= 0 || now >= s.StartAtServerMs) return 0;
-        return (int)Math.Ceiling((s.StartAtServerMs - now) / 1000.0);
+        if (s == null || _lkPaused || now <= 0 || now >= LinkStartInstant(s)) return 0;
+        return (int)Math.Ceiling((LinkStartInstant(s) - now) / 1000.0);
     }
 
     // One warning line, most actionable first. The warning list itself is the 1 Hz cache built for the status message.
-    private string LinkWarningKey()
+    private string LinkWarningText()
     {
-        if (_lkEquipBusy) return "mst.link.warn.equipping";
-        if (_lkWarnings.Contains("no_instrument")) return "mst.link.warn.noInstrument";
-        if (_lkWarnings.Contains("band_view_closed")) return "mst.link.warn.bandView";
-        if (_lkWarnings.Contains("not_buffered")) return "mst.link.warn.notBuffered";
-        if (_lkWarnings.Contains("not_synced")) return "mst.link.warn.notSynced";
-        if (_lkStoppedByPlayer) return "mst.link.warn.stopped";
-        return "";
+        if (_lkEquipBusy) return _loc.TFormat("mst.link.switching", LinkEquipName(_lkEquipTarget.Inst, _lkEquipTarget.Tone));
+        string k =
+            _lkWarnings.Contains("no_instrument")    ? "mst.link.warn.noInstrument" :
+            _lkWarnings.Contains("band_view_closed") ? "mst.link.warn.bandView" :
+            _lkWarnings.Contains("not_buffered")     ? "mst.link.warn.notBuffered" :
+            _lkWarnings.Contains("not_synced")       ? "mst.link.warn.notSynced" :
+            _lkStoppedByPlayer                       ? "mst.link.warn.stopped" : "";
+        return k.Length > 0 ? _loc.T(k) : "";
     }
 }

@@ -62,6 +62,7 @@ public sealed partial class Plugin
         new SeparatorElement(),
         new ButtonElement(Label: () => "🎧 " + _loc.T("mst.btn.preview"), OnClick: () => _previewWindow.SetVisible(true), Width: 320f),
         new ButtonElement(Label: () => _loc.T("mst.btn.settings"), OnClick: () => _settingsWindow.SetVisible(true), Width: 320f),
+        new ButtonElement(Label: () => _loc.T("mst.btn.link"), OnClick: OpenLinkWindow, Width: 320f),
     }, Gap: 8f);
 
     // The Library window — browse the midi/ folder and click a song to add it to the queue.

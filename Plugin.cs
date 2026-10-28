@@ -65,14 +65,16 @@ public sealed partial class Plugin : IStellarPlugin
         _libraryWindow  = RegisterWindow("maestro.library",  _loc.T("mst.win.library"),  4, BuildLibraryRoot());
         _previewWindow  = RegisterWindow("maestro.preview",  _loc.T("mst.win.preview"),  5, BuildPreviewRoot());
         _tipWindow      = RegisterTipWindow();
-        var window = RegisterWindow("maestro.main", _loc.T("mst.title"), 0, BuildBandRoot());
+        _linkWindow     = RegisterWindow("maestro.link",     _loc.T("mst.win.link"),     2, BuildLinkRoot(), 420f);
+        var window = _mainWindow = RegisterWindow("maestro.main", _loc.T("mst.title"), 0, BuildBandRoot());
         // Title stays the fixed literal "Maestro" — the stable pin-identity key (ILauncher.cs:49-50) —
         // so a pinned tile survives a language change; TitleProvider carries the live-localized display.
         _launchers.Add(_services.Launcher.Register(new LauncherEntry(
             Title:   "Maestro",
             IconPng: LoadIconPng(),
             IconKey: null,
-            OnOpen:  () => { RescanMidiFolder(); window.SetVisible(true); })   // rescan the midi/ folder each open
+            // While linked, Maestro opens as the Link status view (it replaces the main window — Plugin.Link.Ui.cs).
+            OnOpen:  () => { if (IsLinked) { _linkWindow.SetVisible(true); return; } RescanMidiFolder(); window.SetVisible(true); })   // rescan the midi/ folder each open
         { Group = LauncherGroup.Plugin,
           // Re-localize the tile DISPLAY on a language change; Title above never changes (pin identity).
           TitleProvider = () => _loc.T("mst.title"),
@@ -84,6 +86,9 @@ public sealed partial class Plugin : IStellarPlugin
         // STEP-0 spike: capture InstrumentService to read the ensemble grid from C#.
         try { EnsemblePatch.Install(_services.Harmony.Create("ensemble"), m => _services.Log.Info(m)); }
         catch (Exception ex) { _services.Log.Warning($"[Maestro] ensemble patch install failed: {ex.Message}"); }
+
+        InitLink();        // Maestro Link (website-run band room) — Plugin.Link*.cs
+        InitLinkDiag();    // dev-only sync diagnostics — dormant unless its folder exists (Plugin.LinkDiag.cs)
 
         _services.Log.Info("[Maestro] constructed");
     }
@@ -125,6 +130,8 @@ public sealed partial class Plugin : IStellarPlugin
     public void Dispose()
     {
         try { _services.Framework.Update -= PlaylistTick; } catch { }
+        DisposeLink();
+        DisposeLinkDiag();
         try { _rateScope?.Dispose(); } catch { }
         try { _previewSynth.Dispose(); } catch { }
         try { EnsemblePatch.Uninstall(); } catch { }

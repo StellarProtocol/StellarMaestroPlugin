@@ -213,7 +213,7 @@ public sealed partial class Plugin
             if (_gapRemainMs <= 0) { _gapRemainMs = -1; AdvanceAfterGap(); }
             return;
         }
-        if (LinkSpikeSwallowCompletion()) return;   // a Maestro-Link spike song ended → don't advance the user's queue
+        if (_lkPhase != LinkPhase.Off) return;   // linked: the ROOM runs the queue (Plugin.Link.Song.cs owns the player)
         if (!_bandPlayer.ConsumeCompleted()) return;
         if (_loopMode != 2 && !_autoAdvance) return;   // stop at end (not looping-one, not auto-advancing)
         if (_gapSec > 0) { _gapRemainMs = _gapSec * 1000.0; _bandMidiStatus = $"next in {_gapSec}s…"; return; }

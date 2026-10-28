@@ -1,0 +1,300 @@
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Text.Json;
+using Stellar.Abstractions.Services;
+
+namespace Stellar.Maestro;
+
+// MAESTRO LINK — a website-run room drives this character's instrument (Standalone\MaestroLinkWeb\docs\design.md +
+// protocol.md are the binding contract). The room broadcasts ONE start instant T (game-server ms) per song; every
+// performer stamps its notes against that T, so all listeners hear the band on the same frame without the game's
+// ensemble (KB Band-Instrument-Playback.md → "Band sync WITHOUT the game ensemble", measured 0 ms per-note delta).
+//
+// Threads: LinkClient owns the socket on a background task and only queues events; EVERYTHING here (Lua, player,
+// config, UI state) runs on the main thread in LinkTick. Server time is always CombatSnapshot.ServerNowMs — never
+// reflect ZServerTime (Server-Clock-and-Ping-HUD.md: stalls the ping HUD + freezes day/night).
+//
+// Linked settings are in-memory overrides on the MidiPlayer only (Plugin.Link.Song.cs ApplyLinkPlayerSettings); the
+// player's saved config / Plugin fields are never written, and Disconnect restores them (RestoreLocalPlayerSettings).
+//
+// Partials: Plugin.Link.cs (session + status) · Plugin.Link.Song.cs (prepare/play/settings) ·
+//           Plugin.Link.Equip.cs (re-equip recipe) · Plugin.Link.Ui.cs (join form + status view).
+public sealed partial class Plugin
+{
+    private enum LinkPhase { Off, Connecting, Linked }
+
+    private const string LinkCodeAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+    private LinkPhase   _lkPhase;
+    private LinkClient? _lk;
+    private bool   _lkOnline;              // socket open AND welcomed (false while reconnecting)
+    private string _lkCode = "";           // join-form code (persisted as the last code)
+    private string _lkErrorKey = "";       // localized error line on the join form ("" = none)
+    private string _lkRoomCode = "";
+    private string _lkPlayerId = "", _lkClientToken = "";
+    private Uri    _lkApiBase = new("https://maestro.stellarresonance.app/api/");
+    private readonly Stopwatch _lkHelloClock = new();
+    private int    _lkPingMs = -1;
+    private double _lkStatusAccumMs, _lkWarnAccumMs, _lkStatusCheckMs;
+    private string _lkLastStatus = "";
+    private readonly List<string> _lkWarnings = new();
+    private bool   _lkBandViewOpen;
+    private int    _lkInstId = -1;         // live GetPlayerInstrumentId (1 Hz cache); 0 = none, -1 = unreadable
+    private int    _lkToneId;              // live tone id (1 Hz cache); 0 = unknown
+
+    private bool IsLinked => _lkPhase == LinkPhase.Linked;
+
+    private void InitLink()
+    {
+        _lkCode = _cfg.Get<string>("link_last_code", "") ?? "";
+        _services.Framework.Update += LinkTick;
+    }
+
+    private void DisposeLink()
+    {
+        try { _services.Framework.Update -= LinkTick; } catch { }
+        if (_lkPhase != LinkPhase.Off) EndLink("", showMain: false);
+    }
+
+    // ---- join / leave ----
+
+    private static string SanitizeCode(string s)
+    {
+        var sb = new System.Text.StringBuilder(6);
+        foreach (var ch in (s ?? "").ToUpperInvariant())
+            if (LinkCodeAlphabet.IndexOf(ch) >= 0 && sb.Length < 6) sb.Append(ch);
+        return sb.ToString();
+    }
+
+    private bool CanJoin() => _lkPhase == LinkPhase.Off && _lkCode.Length > 0;
+
+    private void JoinLink()
+    {
+        if (!CanJoin()) return;
+        _lkErrorKey = "";
+        Uri ws;
+        try { ws = new Uri(_cfg.Get<string>("link_server", LinkProtocol.DefaultServer) ?? LinkProtocol.DefaultServer); }
+        catch { _lkErrorKey = "mst.link.err.unreachable"; return; }
+        _lkApiBase = LinkProtocol.ApiBase(ws);
+
+        var name = _services.PlayerState.IsAvailable ? (_services.PlayerState.Name ?? "") : "";
+        string hello = LinkProtocol.Hello(_lkCode, LinkClientId(name), name, PluginVersion());
+        _lkPhase  = LinkPhase.Connecting;
+        _lkOnline = false;
+        _lkPingMs = -1;
+        _lk = new LinkClient(ws, hello);
+        _lk.Start();
+        _services.Log.Info($"[MaestroLink] joining {_lkCode} via {ws} as '{name}'");
+    }
+
+    // Stable per game install + character (protocol §2): a GUID persisted under the character's name, so a reconnect
+    // (or a later session) gets the same playerId/slot back.
+    private string LinkClientId(string name)
+    {
+        string key = "link_client_id." + (name.Length > 0 ? name : "_");
+        var id = _cfg.Get<string>(key, "") ?? "";
+        if (id.Length == 0) { id = "c-" + Guid.NewGuid().ToString("N"); _cfg.Set<string>(key, id); _cfg.Save(); }
+        return id;
+    }
+
+    private static string PluginVersion()
+    {
+        var v = typeof(Plugin).Assembly.GetName().Version;
+        return v == null ? "0.0.0" : $"{v.Major}.{v.Minor}.{Math.Max(0, v.Build)}";
+    }
+
+    // Leave the room (Disconnect button, server error/closed, or plugin dispose): stop our part, drop the socket, undo
+    // every linked override, and give the normal Maestro window back.
+    private void EndLink(string errorKey, bool showMain = true)
+    {
+        bool wasLinked = _lkPhase == LinkPhase.Linked;
+        var lk = _lk; _lk = null;
+        try { lk?.Dispose(); } catch { }
+        _lkPhase  = LinkPhase.Off;
+        _lkOnline = false;
+        _lkErrorKey = errorKey;
+        if (wasLinked)
+        {
+            StopLinkedPart();
+            LinkResetSongState();
+            RestoreLocalPlayerSettings();
+            CancelLinkEquip();
+            if (showMain)
+            {
+                _linkWindow.SetVisible(false);
+                _mainWindow.SetVisible(true);
+                // The join form is hidden now, so a room-closed / kicked / expired reason goes on the main status line.
+                if (errorKey.Length > 0) _bandMidiStatus = _loc.T(errorKey);
+            }
+        }
+        _services.Log.Info($"[MaestroLink] left (error='{errorKey}')");
+    }
+
+    // ---- main-thread tick ----
+
+    private void LinkTick(float dt)
+    {
+        if (_lk == null) return;
+        try
+        {
+            while (_lk != null && _lk.Inbox.TryDequeue(out var ev)) HandleLinkEvent(ev);
+            if (_lk == null) return;
+            DrainStemResults();
+            LinkEquipTick();
+            LinkPartTick(dt);
+
+            if (!IsLinked) return;
+            _lkWarnAccumMs   += dt * 1000.0;
+            _lkStatusAccumMs += dt * 1000.0;
+            _lkStatusCheckMs += dt * 1000.0;
+            if (_lkWarnAccumMs >= 1000) { _lkWarnAccumMs = 0; RefreshLinkLiveState(); }
+            // Change detection at ~10 Hz (a JSON serialize per frame is needless GC churn in the game process).
+            if (_lkStatusCheckMs < 100 && _lkStatusAccumMs < 1000 && _lkLastStatus.Length > 0) return;
+            _lkStatusCheckMs = 0;
+            string st = BuildStatusCore();
+            if (_lkStatusAccumMs >= 1000 || st != _lkLastStatus) { _lkStatusAccumMs = 0; _lkLastStatus = st; SendStatus(st); }
+        }
+        catch (Exception ex) { _services.Log.Warning($"[MaestroLink] tick error: {ex.Message}"); }
+    }
+
+    private void HandleLinkEvent(LinkClient.Event ev)
+    {
+        switch (ev.Kind)
+        {
+            case LinkClient.Kind.Opened:  _lkHelloClock.Restart(); break;
+            case LinkClient.Kind.Dropped: if (_lkOnline) _services.Log.Info($"[MaestroLink] connection dropped ({ev.Text}) — reconnecting"); _lkOnline = false; break;
+            case LinkClient.Kind.Fatal:
+                EndLink(ev.Text == "unreachable" ? "mst.link.err.unreachable" : ErrorKeyFor(ev.Text));
+                break;
+            case LinkClient.Kind.Message:
+                try { using var doc = JsonDocument.Parse(ev.Text); HandleLinkMessage(doc.RootElement); }
+                catch (Exception ex) { _services.Log.Warning($"[MaestroLink] bad message: {ex.Message}"); }
+                break;
+        }
+    }
+
+    private static string ErrorKeyFor(string code) => code switch
+    {
+        "room_not_found" or "room_closed" => "mst.link.err.notFound",
+        "room_full"      => "mst.link.err.full",
+        "proto_mismatch" => "mst.link.err.version",
+        "closed"         => "mst.link.err.closed",
+        _                => "mst.link.err.unreachable",
+    };
+
+    private void HandleLinkMessage(JsonElement m)
+    {
+        string t = LinkSettings.Str(m, "t") ?? "";
+        switch (t)
+        {
+            case "welcome":  OnLinkWelcome(m); break;
+            case "error":    EndLink(ErrorKeyFor(LinkSettings.Str(m, "code") ?? "")); break;
+            case "closed":   EndLink("mst.link.err.closed"); break;
+            case "settings":
+                if (m.TryGetProperty("settings", out var s))
+                    OnLinkSettings(LinkSettings.Parse(s), LinkSettings.Str(m, "apply") ?? "now");
+                break;
+            case "prepare":  { var song = LinkSong.Parse(m); if (song != null) OnLinkPrepare(song); } break;
+            case "play":     { var song = LinkSong.Parse(m); if (song != null) OnLinkPlay(song); } break;
+            case "stop":     OnLinkStop(); break;
+            case "ping":     { var p = LinkSettings.Int(m, "pingMs"); if (p != null) _lkPingMs = p.Value; } break;   // optional, see report
+        }
+    }
+
+    private void OnLinkWelcome(JsonElement m)
+    {
+        bool first = _lkPhase != LinkPhase.Linked;
+        if (_lkHelloClock.IsRunning) { _lkPingMs = (int)_lkHelloClock.ElapsedMilliseconds; _lkHelloClock.Reset(); }   // hello→welcome ≈ one RTT
+        _lkOnline      = true;
+        _lkPlayerId    = LinkSettings.Str(m, "playerId") ?? "";
+        _lkClientToken = LinkSettings.Str(m, "clientToken") ?? "";
+        _lkLastStatus  = "";   // force a status right away
+
+        if (first)
+        {
+            _lkPhase = LinkPhase.Linked;
+            _lkRoomCode = _lkCode;
+            _cfg.Set<string>("link_last_code", _lkCode); _cfg.Save();
+            // Joining: local playback stops, the normal Maestro windows give way to the Link status view, and the
+            // player is put into linked mode (buffered, tempo 100 %, keep-base).
+            StopPlayback();
+            _bandPlayer.StopReset();
+            _mainWindow.SetVisible(false);
+            _settingsWindow.SetVisible(false);
+            _networkWindow.SetVisible(false);
+            _previewWindow.SetVisible(false);
+            _libraryWindow.SetVisible(false);
+            _linkWindow.SetVisible(true);
+            _services.Log.Info($"[MaestroLink] linked: room={_lkRoomCode} player={_lkPlayerId}");
+        }
+        else _services.Log.Info("[MaestroLink] reconnected");
+
+        if (m.TryGetProperty("settings", out var s)) OnLinkSettings(LinkSettings.Parse(s), "now", fromWelcome: true);
+        else ApplyLinkPlayerSettings();
+        if (m.TryGetProperty("song", out var sg) && LinkSong.Parse(sg) is { } song) OnLinkPlay(song);
+    }
+
+    // ---- status (protocol §2 ClientStatus) ----
+
+    // 1 Hz: the Lua-backed reads (band view, instrument, tone) — kept off the per-frame path.
+    private void RefreshLinkLiveState()
+    {
+        _lkBandViewOpen = IsBandViewOpen();
+        _lkInstId = ReadPlayerInstrumentId();
+        _services.Lua.DoString("pcall(function() rawset(_G,'__ml_tone',nil) local svc=Z.DIServiceMgr.InstrumentService local ent=Z.EntityMgr.PlayerEnt " +
+                               "if svc~=nil and ent~=nil and svc:GetPlayerInstrumentId()~=0 then rawset(_G,'__ml_tone', svc:EntityInstrumentGetTone(ent,true)) end end)");
+        _lkToneId = _services.Lua.TryReadGlobalNumber("__ml_tone", out double tone) ? (int)tone : 0;
+
+        _lkWarnings.Clear();
+        if (!_lkBandViewOpen) _lkWarnings.Add("band_view_closed");
+        if (_lkInstId == 0) _lkWarnings.Add("no_instrument");
+        if (!_bandPlayer.PreBufferedNet) _lkWarnings.Add("not_buffered");
+        if (_services.CombatSnapshot.ServerNowMs <= 0) _lkWarnings.Add("not_synced");
+    }
+
+    // Everything except serverNowMs/positionMs — compared each frame to send a status "immediately on any state change".
+    private string BuildStatusCore()
+        => JsonSerializer.Serialize(new
+        {
+            state = LinkStateName(),
+            instrumentId = Math.Max(0, _lkInstId),
+            toneId = _lkToneId,
+            bandViewOpen = _lkBandViewOpen,
+            bufferedMode = _bandPlayer.PreBufferedNet,
+            songId = LinkStatusSongId(),
+            warnings = _lkWarnings,
+        });
+
+    private void SendStatus(string core)
+    {
+        if (_lk == null || !_lkOnline) return;
+        long now = _services.CombatSnapshot.ServerNowMs;
+        // Splice the volatile fields in front of the cached core (core is a JSON object: "{...}").
+        string head = "{\"t\":\"status\",\"serverNowMs\":" + Math.Max(0, now) + ",\"positionMs\":" + LinkPositionMs() + ",";
+        _lk.Send(head + core.Substring(1));
+    }
+
+    private void SendAck(string of, string? songId, bool ok, string? error = null)
+    {
+        if (_lk == null) return;
+        _lk.Send(LinkProtocol.Ack(of, songId, ok, error));
+        if (!ok) _services.Log.Info($"[MaestroLink] ack {of} song={songId} FAILED: {error}");
+    }
+
+    // InstrumentService.GetPlayerInstrumentId() (dump.cs 229262) on the instance EnsemblePatch captures from Tick.
+    // 0 = no instrument summoned; -1 = not readable yet.
+    private System.Reflection.MethodInfo? _getInstId;
+    private int ReadPlayerInstrumentId()
+    {
+        var inst = EnsemblePatch.Instance;
+        if (inst == null) return -1;
+        try
+        {
+            _getInstId ??= StellarInterop.FindType("Panda.ZGame.InstrumentService")?
+                .GetMethod("GetPlayerInstrumentId", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public, null, Type.EmptyTypes, null);
+            return _getInstId == null ? -1 : Convert.ToInt32(_getInstId.Invoke(inst, null));
+        }
+        catch { return -1; }
+    }
+}

@@ -178,9 +178,19 @@ public sealed partial class Plugin
     {
         "room_not_found" or "room_closed" => "mst.link.err.notFound",
         "room_full"      => "mst.link.err.full",
-        "proto_mismatch" => "mst.link.err.version",
-        "closed"         => "mst.link.err.closed",
+        // bad_request = the server rejected our hello as malformed → an incompatible plugin build, same advice.
+        "proto_mismatch" or "bad_request" => "mst.link.err.version",
         _                => "mst.link.err.unreachable",
+    };
+
+    // `closed {reason}` (protocol §2): closed_by_owner / expired / kicked / replaced (same character joined again
+    // from another session — the newer connection wins, so this one must NOT reconnect).
+    private static string ClosedKeyFor(string reason) => reason switch
+    {
+        "expired"  => "mst.link.err.expired",
+        "kicked"   => "mst.link.err.kicked",
+        "replaced" => "mst.link.err.replaced",
+        _          => "mst.link.err.closed",
     };
 
     private void HandleLinkMessage(JsonElement m)
@@ -190,7 +200,7 @@ public sealed partial class Plugin
         {
             case "welcome":  OnLinkWelcome(m); break;
             case "error":    EndLink(ErrorKeyFor(LinkSettings.Str(m, "code") ?? "")); break;
-            case "closed":   EndLink("mst.link.err.closed"); break;
+            case "closed":   EndLink(ClosedKeyFor(LinkSettings.Str(m, "reason") ?? "")); break;
             case "settings":
                 if (m.TryGetProperty("settings", out var s))
                     OnLinkSettings(LinkSettings.Parse(s), LinkSettings.Str(m, "apply") ?? "now");
@@ -232,7 +242,11 @@ public sealed partial class Plugin
 
         if (m.TryGetProperty("settings", out var s)) OnLinkSettings(LinkSettings.Parse(s), "now", fromWelcome: true);
         else ApplyLinkPlayerSettings();
+        // welcome.song is the ONLY rejoin message on (re)connect: the running song with its T (stemUrl null = no part).
+        // OnLinkPlay downloads the stem and late-joins; the same song + T we're still playing is idempotent. No song
+        // on a RE-connect = the room stopped / moved on while we were away → end the stale part.
         if (m.TryGetProperty("song", out var sg) && LinkSong.Parse(sg) is { } song) OnLinkPlay(song);
+        else if (!first && _lkRoomSong != null) OnLinkStop();
     }
 
     // ---- status (protocol §2 ClientStatus) ----

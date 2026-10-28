@@ -244,6 +244,7 @@ public sealed partial class MidiPlayer : IDisposable
             _playIdx = 0; while (_playIdx < _timeline.Count && _timeline[_playIdx].RealMs < targetMs) _playIdx++;
             _sendIdx = _playIdx;
             _b2Held.Clear();
+            ResetLinkCursors();   // a normal seek starts fresh (no floors / orphan skips)
             int n = 0; for (int i = 0; i < _playIdx; i++) if (_timeline[i].Type == CmdType.Press) n++;
             _sentNotes = n;
         }
@@ -267,6 +268,9 @@ public sealed partial class MidiPlayer : IDisposable
     // Anchor the running clock (and, in buffered mode, the network base) to the current position.
     private void AnchorClock()
     {
+        // Linked (Maestro Link): the base is the room's shared T — re-anchoring it to the LOCAL server clock here is
+        // exactly what breaks band sync. The linked UI exposes no seek/resume, so this is a guard, not a path.
+        if (KeepBase && _netMode) return;
         if (_netMode)
         {
             _b2ClockOffset = _realMs - _clock.Elapsed.TotalMilliseconds;
@@ -292,6 +296,7 @@ public sealed partial class MidiPlayer : IDisposable
     // The ~lookahead of already-sent notes plays out on remotes at the old settings; the rest switches over.
     private void RebuildAndReseek()
     {
+        if (KeepBase) { RebuildKeepBase(); return; }   // linked: rebuild from the current position, base T untouched
         double frac = _b2DurationMs > 0 ? _realMs / _b2DurationMs : 0.0;
         ReleaseAllHeldB2();
         BuildTimeline();                                   // uses current _transpose / _holdOffsetMs / _speed

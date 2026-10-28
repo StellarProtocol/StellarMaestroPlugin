@@ -121,6 +121,7 @@ public sealed partial class MidiPlayer
         _b2ForcePedalSent = false;
         _b2Dirty       = false;
         _b2Held.Clear();
+        ResetLinkCursors();   // floors / orphan-release skips / network-open tracking (MidiPlayer.Link.cs)
         BuildTimeline();
         DefineKeyVizHelpers();
         if (EnsembleGrid && EnsembleBaseMs > 0)
@@ -275,6 +276,7 @@ public sealed partial class MidiPlayer
                     _sentNotes++;
                     break;
                 case CmdType.Release:
+                    if (ConsumeSkip(_skipRelLocal, c.Key)) break;   // orphan: its press was skipped (late join / keep-base rebuild)
                     if (!_muteLocal) { _sb.Append("svc:EntityInstrumentReleaseNote(ent,").Append(c.Key).Append(",true) "); _b2Held.Remove(c.Key); }
                     if (_showKeyViz)  _sb.Append("__mvr(").Append(c.Key).Append(") ");
                     if (!_muteLocal || _showKeyViz) noteEmitted++;
@@ -356,12 +358,15 @@ public sealed partial class MidiPlayer
                 continue;
             }
             if (c.Type != CmdType.Press && c.Type != CmdType.Release) continue;
+            if (c.Type == CmdType.Release && ConsumeSkip(_skipRelSend, c.Key)) continue;   // orphan release — press never sent
+            TrackNetSent(c.Key, c.Type == CmdType.Press);
             _batch.Add(new B2Item(pt, B2Rank.Note, seq++,
                 "{syncType=E.EInstrumentSyncType.Note,playTime=__b2base+" + pt +
                 ",playParam=" + c.Key +
                 ",playType=E.EInstrumentPlayType." + (c.Type == CmdType.Press ? "Press" : "Release") +
                 ",expectedSyncTime=0}"));
         }
+        _sendHorizonMs = Math.Max(_sendHorizonMs, _realMs + _lookaheadMs);   // everything up to here is sent (keep-base rebuild boundary)
 
         // Tone/technique program-change boundaries due in the SAME window (advances _effSendCur — this is now the ONLY
         // network emitter for continuous boundaries; TickInstrumentEffect only applies them locally). timbre/kind resolve

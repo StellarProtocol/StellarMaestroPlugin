@@ -143,6 +143,7 @@
   "mst.link.err.expired": "ห้อง Maestro Link หมดอายุแล้ว",
   "mst.link.err.kicked": "คุณถูกนำออกจากห้อง Maestro Link",
   "mst.link.err.replaced": "ตัวละครนี้เข้าร่วมห้องจากเซสชันอื่นแล้ว",
+  "mst.link.err.loggedOut": "ตัดการเชื่อมต่อจาก Maestro Link แล้ว: คุณออกจากระบบ กด เข้าร่วม เพื่อเข้าห้องอีกครั้ง",
   "mst.link.room": "ห้อง {0}",
   "mst.link.ping": "{0} ms",
   "mst.link.reconnecting": "กำลังเชื่อมต่อใหม่…",

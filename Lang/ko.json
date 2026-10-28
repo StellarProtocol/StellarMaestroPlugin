@@ -143,6 +143,7 @@
   "mst.link.err.expired": "Maestro Link 방이 만료되었습니다.",
   "mst.link.err.kicked": "Maestro Link 방에서 내보내졌습니다.",
   "mst.link.err.replaced": "이 캐릭터가 다른 세션에서 방에 참가했습니다.",
+  "mst.link.err.loggedOut": "Maestro Link 연결이 끊어졌습니다: 로그아웃했습니다. 참가를 눌러 방에 다시 참가하세요.",
   "mst.link.room": "방 {0}",
   "mst.link.ping": "{0} ms",
   "mst.link.reconnecting": "재연결 중…",

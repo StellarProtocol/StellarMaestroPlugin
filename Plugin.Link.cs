@@ -43,18 +43,24 @@ public sealed partial class Plugin
     private bool   _lkBandViewOpen;
     private int    _lkInstId = -1;         // live GetPlayerInstrumentId (1 Hz cache); 0 = none, -1 = unreadable
     private int    _lkServerTone;          // DIAG: server-player tone read (attr 1201 path), 1 Hz; 0 = none — not reported until verified
+    private string _lkCharName = "";       // character that joined (logout safety net: a different name while linked = left)
+    private int    _lkMainThread;          // Unity main thread id (Logout thread check)
+    private volatile bool _lkLogoutPending; // off-thread Logout seen → LinkTick ends the link BEFORE draining the inbox
 
     private bool IsLinked => _lkPhase == LinkPhase.Linked;
 
     private void InitLink()
     {
         _lkCode = _cfg.Get<string>("link_last_code", "") ?? "";
+        _lkMainThread = Environment.CurrentManagedThreadId;
         _services.Framework.Update += LinkTick;
+        _services.ClientState.Logout += OnLinkLogout;
     }
 
     private void DisposeLink()
     {
         try { _services.Framework.Update -= LinkTick; } catch { }
+        try { _services.ClientState.Logout -= OnLinkLogout; } catch { }
         if (_lkPhase != LinkPhase.Off) EndLink("", showMain: false);
     }
 
@@ -78,6 +84,7 @@ public sealed partial class Plugin
         _lkApiBase = LinkProtocol.ApiBase(ws);
 
         var name = _services.PlayerState.IsAvailable ? (_services.PlayerState.Name ?? "") : "";
+        _lkCharName = name;
         string hello = LinkProtocol.Hello(_lkCode, LinkClientId(name), name, PluginVersion());
         _lkPhase  = LinkPhase.Connecting;
         _lkOnline = false;
@@ -124,8 +131,11 @@ public sealed partial class Plugin
         return v == null ? "0.0.0" : $"{v.Major}.{v.Minor}.{Math.Max(0, v.Build)}";
     }
 
-    // Leave the room (Disconnect button, server error/closed, or plugin dispose): stop our part, drop the socket, undo
-    // every linked override, and give the normal Maestro window back.
+    // Leave the room (Disconnect button, server error/closed, logout, or plugin dispose): stop our part, drop the socket,
+    // undo every linked override, and give the normal Maestro window back. Dropping `_lk` also discards its Inbox — any
+    // room command still queued (e.g. piled up while logged out, when LinkTick doesn't run) dies with the client.
+    // Each teardown step is guarded on its own: on logout the world is already tearing down, so a Lua-backed step (the
+    // listener note/pedal release, the play-range restore) may throw — that must not skip the in-memory resets after it.
     private void EndLink(string errorKey, bool showMain = true)
     {
         bool wasLinked = _lkPhase == LinkPhase.Linked;
@@ -134,14 +144,18 @@ public sealed partial class Plugin
         _lkPhase  = LinkPhase.Off;
         _lkOnline = false;
         _lkErrorKey = errorKey;
+        _lkLogoutPending = false;
         if (wasLinked)
         {
-            StopLinkedPart();
+            try { StopLinkedPart(); }
+            catch (Exception ex) { _services.Log.Warning($"[MaestroLink] stop part on leave: {ex.Message}"); try { _bandPlayer.StopReset(); } catch { } }
             LinkResetSongState();
-            RestoreLocalPlayerSettings();
-            CancelLinkEquip();
+            try { RestoreLocalPlayerSettings(); } catch (Exception ex) { _services.Log.Warning($"[MaestroLink] restore settings on leave: {ex.Message}"); }
+            try { CancelLinkEquip(); } catch (Exception ex) { _services.Log.Warning($"[MaestroLink] cancel equip on leave: {ex.Message}"); }
             if (showMain)
             {
+                // SetVisible only flips the window's flag — the Phase==World ShouldRender gate still decides the mount,
+                // so on a logout this takes effect (status line included) once the player is back in the world.
                 _linkWindow.SetVisible(false);
                 _mainWindow.SetVisible(true);
                 // The join form is hidden now, so a room-closed / kicked / expired reason goes on the main status line.
@@ -151,13 +165,50 @@ public sealed partial class Plugin
         _services.Log.Info($"[MaestroLink] left (error='{errorKey}')");
     }
 
+    // ---- logout ----
+
+    // IClientState.Logout (Game-Phases-and-Tick-Gating.md §4): fires once, immediately, on title screen / char select /
+    // character swap — NOT PhaseChanged leaving World (the phase is held at World through a logout, and an Account
+    // Switcher swap never leaves it). The framework raises it from its Game.OnLogout Harmony postfix, i.e. on the Unity
+    // main thread, so we tear down right here: the socket must close NOW — LinkTick (IFramework.Update) is world-gated,
+    // so a deferred close would leave the web room showing us connected-but-frozen until the next login. No auto-rejoin:
+    // the join form keeps the room code, so rejoining is one click.
+    private void OnLinkLogout()
+    {
+        if (_lkPhase == LinkPhase.Off) return;
+        if (Environment.CurrentManagedThreadId == _lkMainThread) { EndLinkLoggedOut(); return; }
+        // Off-thread (not expected): Post marshals, but it drains on this plugin's next Update tick — world-gated too —
+        // so also flag it: LinkTick checks the flag BEFORE draining the inbox, so no stale room command replays first,
+        // whichever of the two runs first.
+        _lkLogoutPending = true;
+        _services.Framework.Post(() => { if (_lkLogoutPending) EndLinkLoggedOut(); });
+    }
+
+    private void EndLinkLoggedOut()
+    {
+        _services.Log.Info($"[MaestroLink] logged out (character '{_lkCharName}') — leaving the room");
+        EndLink("mst.link.err.loggedOut");
+    }
+
+    // Safety net (in-world, 1 Hz): a different character name while linked = a logout/swap slipped past the event.
+    // Empty name = the player record isn't loaded yet (it's cleared on logout), never a change. SDK 2.3.0's IPlayerState
+    // has no CharId, so the name is the only identity available here.
+    private bool LinkCharacterChanged()
+    {
+        if (_lkCharName.Length == 0 || !_services.ClientState.IsWorldActive || !_services.PlayerState.IsAvailable) return false;
+        var now = _services.PlayerState.Name ?? "";
+        return now.Length > 0 && now != _lkCharName;
+    }
+
     // ---- main-thread tick ----
 
     private void LinkTick(float dt)
     {
+        _lkMainThread = Environment.CurrentManagedThreadId;
         if (_lk == null) return;
         try
         {
+            if (_lkLogoutPending) { EndLinkLoggedOut(); return; }
             while (_lk != null && _lk.Inbox.TryDequeue(out var ev)) HandleLinkEvent(ev);
             if (_lk == null) return;
             DrainStemResults();
@@ -168,7 +219,12 @@ public sealed partial class Plugin
             _lkWarnAccumMs   += dt * 1000.0;
             _lkStatusAccumMs += dt * 1000.0;
             _lkStatusCheckMs += dt * 1000.0;
-            if (_lkWarnAccumMs >= 1000) { _lkWarnAccumMs = 0; RefreshLinkLiveState(); }
+            if (_lkWarnAccumMs >= 1000)
+            {
+                _lkWarnAccumMs = 0;
+                if (LinkCharacterChanged()) { EndLinkLoggedOut(); return; }
+                RefreshLinkLiveState();
+            }
             // Change detection at ~10 Hz (a JSON serialize per frame is needless GC churn in the game process).
             if (_lkStatusCheckMs < 100 && _lkStatusAccumMs < 1000 && _lkLastStatus.Length > 0) return;
             _lkStatusCheckMs = 0;

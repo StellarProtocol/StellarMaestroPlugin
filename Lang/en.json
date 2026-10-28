@@ -143,6 +143,7 @@
   "mst.link.err.expired": "The Maestro Link room expired.",
   "mst.link.err.kicked": "You were removed from the Maestro Link room.",
   "mst.link.err.replaced": "This character joined the room from another session.",
+  "mst.link.err.loggedOut": "Disconnected from Maestro Link: you logged out. Press Join to rejoin the room.",
   "mst.link.room": "Room {0}",
   "mst.link.ping": "{0} ms",
   "mst.link.reconnecting": "Reconnecting…",

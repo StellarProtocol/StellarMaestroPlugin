@@ -143,6 +143,7 @@
   "mst.link.err.expired": "Nag-expire na ang Maestro Link room.",
   "mst.link.err.kicked": "Inalis ka sa Maestro Link room.",
   "mst.link.err.replaced": "Sumali ang character na ito sa room mula sa ibang session.",
+  "mst.link.err.loggedOut": "Nadiskonekta sa Maestro Link: nag-log out ka. Pindutin ang Join para muling sumali sa room.",
   "mst.link.room": "Room {0}",
   "mst.link.ping": "{0} ms",
   "mst.link.reconnecting": "Muling kumokonekta…",

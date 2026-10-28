@@ -143,6 +143,7 @@
   "mst.link.err.expired": "Maestro Link のルームの有効期限が切れました。",
   "mst.link.err.kicked": "Maestro Link のルームから退出させられました。",
   "mst.link.err.replaced": "このキャラクターが別のセッションからルームに参加しました。",
+  "mst.link.err.loggedOut": "Maestro Link から切断されました：ログアウトしました。参加を押すとルームに再参加できます。",
   "mst.link.room": "ルーム {0}",
   "mst.link.ping": "{0} ms",
   "mst.link.reconnecting": "再接続中…",

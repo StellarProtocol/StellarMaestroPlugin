@@ -74,9 +74,7 @@ public sealed partial class Plugin
     {
         if (!CanJoin()) return;
         _lkErrorKey = "";
-        Uri ws;
-        try { ws = new Uri(_cfg.Get<string>("link_server", LinkProtocol.DefaultServer) ?? LinkProtocol.DefaultServer); }
-        catch { _lkErrorKey = "mst.link.err.unreachable"; return; }
+        Uri ws = LinkServerUri();
         _lkApiBase = LinkProtocol.ApiBase(ws);
 
         var name = _services.PlayerState.IsAvailable ? (_services.PlayerState.Name ?? "") : "";
@@ -87,6 +85,27 @@ public sealed partial class Plugin
         _lk = new LinkClient(ws, hello);
         _lk.Start();
         _services.Log.Info($"[MaestroLink] joining {_lkCode} via {ws} as '{name}'");
+    }
+
+    // The Link server is BUILT IN (LinkProtocol.DefaultServer) — not a config setting, so a player can't be pointed at
+    // another server through their config file (a leftover `link_server` key is simply ignored). Dev-only override:
+    // the MAESTRO_LINK_SERVER environment variable (a ws:// or wss:// URL), read on every Join, never shown in the UI.
+    private string _lkOverrideLogged = "";
+
+    private Uri LinkServerUri()
+    {
+        var env = Environment.GetEnvironmentVariable("MAESTRO_LINK_SERVER");
+        if (!string.IsNullOrWhiteSpace(env)
+            && Uri.TryCreate(env.Trim(), UriKind.Absolute, out var o) && (o.Scheme == "ws" || o.Scheme == "wss"))
+        {
+            if (_lkOverrideLogged != o.AbsoluteUri)
+            {
+                _lkOverrideLogged = o.AbsoluteUri;
+                _services.Log.Info($"[MaestroLink] server override from MAESTRO_LINK_SERVER: {o.AbsoluteUri}");
+            }
+            return o;
+        }
+        return new Uri(LinkProtocol.DefaultServer);
     }
 
     // Stable per game install + character (protocol §2): a GUID persisted under the character's name, so a reconnect

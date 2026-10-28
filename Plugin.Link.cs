@@ -207,8 +207,8 @@ public sealed partial class Plugin
                 break;
             case "prepare":  { var song = LinkSong.Parse(m); if (song != null) OnLinkPrepare(song); } break;
             case "play":     { var song = LinkSong.Parse(m); if (song != null) OnLinkPlay(song); } break;
-            case "stop":     OnLinkStop(); break;
-            case "ping":     { var p = LinkSettings.Int(m, "pingMs"); if (p != null) _lkPingMs = p.Value; } break;   // optional, see report
+            case "stop":     if (LinkSettings.Str(m, "scope") == "part") OnLinkStopPart(); else OnLinkStop(); break;   // missing scope = room
+            case "ping":     { var p = LinkSettings.Int(m, "pingMs"); if (p != null) _lkPingMs = p.Value; } break;   // RTT from the previous pong
         }
     }
 

@@ -56,6 +56,9 @@ internal sealed class LinkSong
     public long   StartAtServerMs; // T — 0 for a `prepare`
     public string? Next;
 
+    public LinkSong WithStem(string? stemUrl)
+        => new() { SongId = SongId, Title = Title, StemUrl = stemUrl, DurationMs = DurationMs, StartAtServerMs = StartAtServerMs, Next = Next };
+
     public static LinkSong? Parse(JsonElement e)
     {
         if (e.ValueKind != JsonValueKind.Object) return null;

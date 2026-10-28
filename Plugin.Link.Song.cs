@@ -52,8 +52,31 @@ public sealed partial class Plugin
 
     private void OnLinkPrepare(LinkSong song)
     {
-        _lkPrepSong = song;
+        // A `prepare` for the song that is RUNNING (stem re-assigned back to us mid-song, or rejoin): it updates the
+        // running song's part — with a stem, LinkPartTick late-joins it; it is not the "next" song.
+        if (_lkRoomSong != null && _lkRoomSong.SongId == song.SongId)
+        {
+            if (_lkRoomSong.StemUrl != song.StemUrl && !_lkPartActive)
+            {
+                _lkRoomSong = _lkRoomSong.WithStem(song.StemUrl);
+                _lkPartDoneKey = "";
+                _lkStartAccumMs = double.MaxValue;
+            }
+        }
+        else _lkPrepSong = song;
         EnsureStem(song.SongId, song.StemUrl, ackPrepare: true);
+    }
+
+    // stop {scope:"part"}: only OUR stem of the running song was re-assigned away. Stop the part (StopLinked releases
+    // what listeners hold) but keep the song on screen as "resting" (stemUrl null → idle + songId in status). A later
+    // prepare/play for the same song with a stemUrl late-joins normally (OnLinkPrepare above / OnLinkPlay).
+    private void OnLinkStopPart()
+    {
+        StopLinkedPart();
+        _lkStoppedByPlayer = false;
+        _lkPartDoneKey = "";
+        _lkPlayAckKey = "";
+        if (_lkRoomSong != null) _lkRoomSong = _lkRoomSong.WithStem(null);
     }
 
     private void OnLinkPlay(LinkSong song)

@@ -50,6 +50,10 @@ internal static class EnsemblePatch
 
     private static void TickPostfix(Il2CppObjectBase __instance) => _instance = __instance;
 
+    // The captured InstrumentService (null until its first Tick). Read-only share for the Maestro-Link spike's
+    // GetPlayerInstrumentId check — avoids a second Tick patch for the same instance.
+    internal static object? Instance => _instance;
+
     // Reads the live ensemble grid. Returns null if the instance/getters aren't available.
     internal static (int inEnsemble, int bpm, int beat, long startTs)? Read()
     {

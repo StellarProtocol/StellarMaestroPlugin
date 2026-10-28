@@ -85,6 +85,8 @@ public sealed partial class Plugin : IStellarPlugin
         try { EnsemblePatch.Install(_services.Harmony.Create("ensemble"), m => _services.Log.Info(m)); }
         catch (Exception ex) { _services.Log.Warning($"[Maestro] ensemble patch install failed: {ex.Message}"); }
 
+        InitLinkSpike();   // Maestro-Link sync spike — dormant unless its dev folder exists (Plugin.LinkSpike.cs)
+
         _services.Log.Info("[Maestro] constructed");
     }
 
@@ -125,6 +127,7 @@ public sealed partial class Plugin : IStellarPlugin
     public void Dispose()
     {
         try { _services.Framework.Update -= PlaylistTick; } catch { }
+        DisposeLinkSpike();
         try { _rateScope?.Dispose(); } catch { }
         try { _previewSynth.Dispose(); } catch { }
         try { EnsemblePatch.Uninstall(); } catch { }

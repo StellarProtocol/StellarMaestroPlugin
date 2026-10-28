@@ -110,7 +110,7 @@ public sealed partial class Plugin
         var s = _lkRoomSong ?? _lkPrepSong;
         if (s?.InstrumentId is int si) return LinkEquipName(si, s.ToneId ?? 0);
         int inst = _lkInstId > 0 ? _lkInstId : (_lkSet.InstrumentId ?? 0);
-        return inst <= 0 ? "—" : LinkEquipName(inst, _lkToneId);
+        return inst <= 0 ? "—" : LinkEquipName(inst, LinkReportedTone());
     }
 
     // Next: the running song's `next`; with nothing running, the prepared (upcoming) song.

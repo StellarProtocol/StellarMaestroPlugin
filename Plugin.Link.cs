@@ -284,7 +284,7 @@ public sealed partial class Plugin
         {
             state = LinkStateName(),
             instrumentId = Math.Max(0, _lkInstId),
-            toneId = _lkToneId,
+            toneId = LinkReportedTone(),   // RESOLVED: the tone we equipped (never 0 when we know it)
             bandViewOpen = _lkBandViewOpen,
             bufferedMode = _bandPlayer.PreBufferedNet,
             songId = LinkStatusSongId(),

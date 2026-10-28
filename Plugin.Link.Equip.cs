@@ -30,7 +30,7 @@ public sealed partial class Plugin
     private LinkEquipTarget _lkEquipForSongTarget;
     private bool   _lkPendingFromSettings;      // the pending run came from `settings` (retry rules below)
     private bool   _lkEquipFromSettings;        // the running run came from `settings`
-    private bool   _lkLastEquipFailed;          // the last attempted target failed → a later identical `settings` retries
+    private int    _lkEquippedInst, _lkEquippedTone;   // our last SUCCESSFUL equip (KnownTone); 0 = none / unknown
     private bool   _lkEquipRetried;             // the automatic after-song retry for this target was used
     private LinkEquipTarget? _lkLastEquipAttempt;
     private string _lkEquipForSong = "";        // `prepare` whose ack waits for a per-song switch (TryAckPrepare)
@@ -66,12 +66,19 @@ public sealed partial class Plugin
         ApplyLinkPlayerSettings();   // instant / live / network classes take effect right away
 
         // instrumentId/toneId are the player's DEFAULTS (protocol §3); a song with a resolved equip overrides them.
+        // (A default change mid-song reaches the running song as a re-sent `play` with the new resolved equip — the
+        // API pushes it — and LinkSongEquip switches then.) Targets are compared RESOLVED (toneId 0 = default tone).
         var song = LinkEquipSong();
         var want = song != null ? TargetFor(song.InstrumentId!.Value, song.ToneId) : TargetFor(s.InstrumentId ?? 10001, s.ToneId);
-        // A failed settings-triggered switch is retryable: the same target in a later `settings` tries again.
-        bool need = (want != _lkLastEquipAttempt || _lkLastEquipFailed) && !EquippedMatches(want);
-        if (!need)
+        if (_lkEquipBusy && _lkEquipTarget == want)
         {
+            LogEquipSkip("busy", want);
+            if (!fromWelcome) _lkEquipAck = true;   // the running run answers this settings too
+            return;
+        }
+        if (!_lkEquipBusy && EquippedMatches(want))
+        {
+            LogEquipSkip("matches", want);
             if (!fromWelcome) SendAck("settings", null, true);
             return;
         }
@@ -79,7 +86,7 @@ public sealed partial class Plugin
         if (apply == "next" && LinkSongInProgress())
         {
             _lkPendingEquip = want; _lkPendingAck = true; _lkPendingAfterSong = true; _lkPendingFromSettings = true;
-            _services.Log.Info($"[MaestroLink] re-equip queued for next song: {want}");
+            LogEquipSkip("pending-after-song", want);
             return;
         }
         _lkPendingEquip = null;
@@ -88,7 +95,8 @@ public sealed partial class Plugin
     }
 
     // Per-song equip switch (protocol batch 1): `prepare`/`play` carry the RESOLVED instrument/tone for that song.
-    //   • for the running song (rejoin / re-assigned back / play) → switch now, the part starts after;
+    //   • for the running song (rejoin / re-assigned back / a re-sent play with a changed equip) → switch now, the
+    //     part rejoins in sync after;
     //   • for the NEXT song while the current one is in progress → only after it ends — never mid-song;
     //   • nothing in progress → switch now.
     // A `prepare` that needs a switch has its ack held until the switch finishes (ok, or equip_failed).
@@ -96,30 +104,60 @@ public sealed partial class Plugin
     {
         if (song.InstrumentId is not int inst || song.StemUrl == null) return;   // no part → nothing to equip
         var want = TargetFor(inst, song.ToneId);
-        if (_lkEquipBusy && _lkEquipTarget == want) { if (fromPrepare) { _lkEquipForSong = song.SongId; _lkEquipForSongTarget = want; } return; }
-        if (!_lkEquipBusy && EquippedMatches(want)) { if (_lkPendingEquip != null && fromPrepare) _lkPendingEquip = null; return; }
+        if (_lkEquipBusy && _lkEquipTarget == want)
+        {
+            if (fromPrepare) { _lkEquipForSong = song.SongId; _lkEquipForSongTarget = want; }
+            LogEquipSkip("busy", want);
+            return;
+        }
+        if (!_lkEquipBusy && EquippedMatches(want))
+        {
+            if (_lkPendingEquip != null && fromPrepare) _lkPendingEquip = null;
+            LogEquipSkip("matches", want);
+            return;
+        }
 
         if (fromPrepare) { _lkEquipForSong = song.SongId; _lkEquipForSongTarget = want; }
         bool forRunning = _lkRoomSong != null && _lkRoomSong.SongId == song.SongId;
         if (!forRunning && LinkSongInProgress())
         {
             _lkPendingEquip = want; _lkPendingAck = false; _lkPendingAfterSong = true; _lkPendingFromSettings = false;
-            _services.Log.Info($"[MaestroLink] switch to {want} after the current song (for {song.SongId})");
+            LogEquipSkip("pending-after-song", want);
             return;
         }
         _lkPendingEquip = null;
         StartLinkEquip(want, ack: false);
     }
 
-    // Live check against the game (instrument id + tone + the CurPlayRange the next equip would use). Tone 0 = not
-    // readable → don't force an equip on that alone.
+    // The tone currently on the character as far as we can KNOW it: the tone of our last successful equip, while the
+    // character still holds that instrument. 0 = unknown.
+    //
+    // ⚠️ Do NOT decide from EntityInstrumentGetTone(ent, true): Maestro's "apply tone from MIDI" (ON while linked) sets
+    // the LOCAL tone per the stem's program at play time (EntityInstrumentSetTone(…, true) — MidiPlayer.Effect.cs), so
+    // the read-back is the MIDI-driven tone (Clean for most stems), not the equip tone everyone hears. That made a
+    // switch to Clean look "already equipped" and get skipped, while Overdrive/Distortion targets still differed.
+    private int KnownTone() => _lkEquippedInst != 0 && _lkInstId == _lkEquippedInst ? _lkEquippedTone : 0;
+
+    // status.toneId / Part row: the known equip tone; before our first equip, the raw read-back (best effort).
+    private int LinkReportedTone() { int k = KnownTone(); return k != 0 ? k : _lkToneId; }
+
+    // Live check (instrument id + KNOWN tone + the CurPlayRange the next equip would use). Unknown tone → no match:
+    // re-equipping once is cheap; skipping a needed switch is the bug above.
     private bool EquippedMatches(LinkEquipTarget w)
     {
         RefreshLinkLiveState();
         _services.Lua.DoString("pcall(function() rawset(_G,'__ml_range',nil) rawset(_G,'__ml_range', Z.DataMgr.Get('band_data').CurPlayRange) end)");
-        bool rangeOk = !_services.Lua.TryReadGlobalNumber("__ml_range", out double r) || (int)r == RangeIndex(w.Range);
-        return _lkInstId == w.Inst && (_lkToneId == 0 || _lkToneId == w.Tone) && rangeOk;
+        _lkLiveRange = _services.Lua.TryReadGlobalNumber("__ml_range", out double r) ? (int)r : -1;
+        bool rangeOk = _lkLiveRange < 0 || _lkLiveRange == RangeIndex(w.Range);
+        int tone = KnownTone();
+        return _lkInstId == w.Inst && tone != 0 && tone == w.Tone && rangeOk;
     }
+
+    private int _lkLiveRange = -1;
+
+    private void LogEquipSkip(string reason, LinkEquipTarget want)
+        => _services.Log.Info($"[MaestroLink] equip skip reason={reason} want={want.Inst}/{want.Tone}/{want.Range} " +
+                              $"live={_lkInstId}/{KnownTone()}(read {_lkToneId})/{_lkLiveRange}");
 
     private void LinkPendingEquipTick()
     {
@@ -181,7 +219,8 @@ public sealed partial class Plugin
         _lkEquipBusy = false;
         _services.Log.Info($"[MaestroLink] equip {(done ? "done" : "FAILED")} ({s}) target={_lkEquipTarget}");
         if (_lkEquipAck) SendAck("settings", null, done, done ? null : "equip_failed");
-        _lkLastEquipFailed = !done;
+        if (done) { _lkEquippedInst = _lkEquipTarget.Inst; _lkEquippedTone = _lkEquipTarget.Tone; }
+        else      { _lkEquippedInst = 0; _lkEquippedTone = 0; }   // a failed run may have left anything equipped
         // Settings-triggered switch failed during a song → ONE automatic retry once that song really ends (an
         // identical later `settings` also retries, see OnLinkSettings). No song in progress → wait for the room.
         if (!done && _lkEquipFromSettings && !_lkEquipRetried && _lkPendingEquip == null && LinkSongInProgress())
@@ -215,7 +254,7 @@ public sealed partial class Plugin
         _lkEquipBusy = false;
         _lkPendingEquip = null;
         _lkLastEquipAttempt = null;
-        _lkLastEquipFailed = false; _lkEquipRetried = false;
+        _lkEquipRetried = false; _lkEquippedInst = 0; _lkEquippedTone = 0;
         _lkEquipForSong = "";
         _services.Lua.DoString("pcall(function() local p=rawget(_G,'__ml_prevRange') if p~=nil then " +
                                "Z.DataMgr.Get('band_data').CurPlayRange=p rawset(_G,'__ml_prevRange',nil) end end)");

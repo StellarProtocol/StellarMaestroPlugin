@@ -90,7 +90,9 @@ public sealed partial class Plugin
     {
         string key = LinkKey(song);
         // The SAME song + T + P re-sent (reconnect / rejoin): not a "next play" — keep playing, keep a player stop or a
-        // finished part as they are, just refresh title/next/stem url (and re-equip if the song's equip changed).
+        // finished part as they are, just refresh title/next/stem url. EXCEPT a changed RESOLVED equip (the API re-sends
+        // the running song's play when the owner changes this player's default instrument/tone mid-song): then it is
+        // "re-equip now" — LinkSongEquip (for the running song) stops the part, equips, and LinkPartTick late-joins.
         if (!_lkPaused && _lkRoomSong != null && LinkKey(_lkRoomSong) == key
             && (_lkPartActive || _lkStoppedByPlayer || _lkPartDoneKey == key))
         {

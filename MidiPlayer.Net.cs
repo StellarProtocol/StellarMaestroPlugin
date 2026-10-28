@@ -60,6 +60,8 @@ public sealed partial class MidiPlayer
     private int    _playIdx, _sendIdx;           // separate cursors into the timeline (send runs ahead of play)
     private double _sendAccumMs;
     private bool   _b2ForcePedalSent;            // force-sustain: the one-shot SustainPedal DOWN has been sent this play
+    private long   _b2ForcePedalAtMs;            // ...stamped HERE: the start position (0, or the late-join / seek position)
+    private bool   _netPedalDown;                // the sustain pedal as SENT to listeners (last pedal record queued), not the local state
     private const long B2RebuildDebounceMs = 200; // settle time before rebuilding after a live transpose/hold/tempo change
     private double _restrikeGapMs;                // ms to release a restruck note BEFORE the re-press; 0 = off (release exactly at re-press)
     public int RestrikeGapMs { get => (int)_restrikeGapMs; set { _restrikeGapMs = Math.Clamp(value, 0, 100); MarkB2Dirty(); } }   // live in buffered mode
@@ -119,6 +121,8 @@ public sealed partial class MidiPlayer
         _sendIdx       = 0;
         _sendAccumMs   = _sendIntervalMs;   // send the first lookahead batch on frame one
         _b2ForcePedalSent = false;
+        _b2ForcePedalAtMs = 0;
+        _netPedalDown     = false;
         _b2Dirty       = false;
         _b2Held.Clear();
         ResetLinkCursors();   // floors / orphan-release skips / network-open tracking (MidiPlayer.Link.cs)
@@ -313,14 +317,6 @@ public sealed partial class MidiPlayer
     // Apply the pedal for the current mode: B2 = local-only (network rides the sync records); B1 = local + network via the game path.
     private void ApplyPedal(bool on) { if (_netMode) FlushPedalB2(on); else FlushPedalB1(on); }
 
-    // Send a single SustainPedal record to listeners at the CURRENT position (for a live mid-song force-sustain toggle).
-    private void SendPedalImmediateB2(bool down)
-        => _services.Lua.DoString("pcall(function() Z.CoroUtil.create_coro_xpcall(function() " +
-            "local vm=Z.VMMgr.GetVM('band') local tok=Z.DataMgr.Get('band_data').CancelSource:CreateToken() " +
-            "vm:AsyncSendInstrumentSyncData({{syncType=E.EInstrumentSyncType.SustainPedal,playTime=__b2base+" +
-            (long)System.Math.Round(_realMs) + ",playParam=" + (down ? 1 : 0) +
-            ",playType=E.EInstrumentPlayType.Press,expectedSyncTime=0}}, tok) end)() end)");
-
     private void SendBatchB2()
     {
         // Collect this tick's newly-due records — notes, song pedal events, AND tone/technique program-change boundaries
@@ -333,14 +329,16 @@ public sealed partial class MidiPlayer
         _batch.Clear();
         int seq = 0;
 
-        // Force sustain: hold the pedal DOWN for the whole song — one SustainPedal down at song start (playTime 0), never
-        // an up, and skip the song's own pedal records below. Ranked Pedal so a t=0 tone (none reaches here — seek
-        // already sent it) would still precede it; nothing else sits at t=0.
+        // Force sustain: hold the pedal DOWN for the whole song — one SustainPedal down at the START POSITION (0, or the
+        // late-join / seek position — never stamped in the past), never an up, and skip the song's own pedal records
+        // below. Ranked Pedal so a tone at the same stamp still precedes it.
         if (_forceSustain && !_b2ForcePedalSent)
         {
             _b2ForcePedalSent = true;
-            _batch.Add(new B2Item(0, B2Rank.Pedal, seq++,
-                "{syncType=E.EInstrumentSyncType.SustainPedal,playTime=__b2base+0,playParam=1,playType=E.EInstrumentPlayType.Press,expectedSyncTime=0}"));
+            _netPedalDown = true;
+            _batch.Add(new B2Item(_b2ForcePedalAtMs, B2Rank.Pedal, seq++,
+                "{syncType=E.EInstrumentSyncType.SustainPedal,playTime=__b2base+" + _b2ForcePedalAtMs +
+                ",playParam=1,playType=E.EInstrumentPlayType.Press,expectedSyncTime=0}"));
         }
 
         // Notes + song pedal events from the timeline (playType=Press always for pedal; up/down carried by playParam).
@@ -351,6 +349,7 @@ public sealed partial class MidiPlayer
             if (c.Type == CmdType.PedalOn || c.Type == CmdType.PedalOff)
             {
                 if (_forceSustain) continue;   // force-sustain: song's pedal events are skipped (one-shot down above covers it)
+                _netPedalDown = c.Type == CmdType.PedalOn;   // timeline order → the last one queued is the sent state
                 _batch.Add(new B2Item(pt, B2Rank.Pedal, seq++,
                     "{syncType=E.EInstrumentSyncType.SustainPedal,playTime=__b2base+" + pt +
                     ",playParam=" + (c.Type == CmdType.PedalOn ? 1 : 0) +

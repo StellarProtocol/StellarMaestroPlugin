@@ -90,6 +90,7 @@ public sealed partial class MidiPlayer
         foreach (var kv in open) { _skipRelLocal[kv.Key] = kv.Value; _skipRelSend[kv.Key] = kv.Value; }
         _playFloorMs = _sendFloorMs = floor;
         _sendHorizonMs = Math.Max(_sendHorizonMs, floor);
+        _b2ForcePedalAtMs = posMs;   // force sustain's one-shot DOWN goes at the start position, never in the past
 
         if (pedal && !_forceSustain)
         {
@@ -106,6 +107,9 @@ public sealed partial class MidiPlayer
     // At each boundary the old and new "open note" multisets are reconciled per key: notes open in both carry over (the
     // new timeline's release ends them), old-only notes are released AT the boundary, new-only notes (never pressed)
     // get their release swallowed.
+    // Pedal: nothing to reconcile — pedal events depend only on song time and tempo (fixed 100 % while linked), not on
+    // transpose / hold / poly / restrike, so the old and new timelines agree on the pedal at H; force sustain doesn't
+    // rebuild (its toggle is LiveForceSustainB2).
     private void RebuildKeepBase()
     {
         BuildTimeline();
@@ -171,9 +175,13 @@ public sealed partial class MidiPlayer
     // Linked "stop my part" / re-equip: stop locally AND release every note listeners still hold. A plain Stop only
     // silences the local instrument — releases past the send horizon were never sent, so on listeners those notes
     // would ring until the game cleans them up. Stamped at the horizon (after every press we sent).
+    // Also lifts the NETWORK sustain pedal (song pedal or force sustain, as last SENT — _netPedalDown, not the local
+    // _pedalDown): otherwise listeners keep it down, the released notes ring on, and our next part starts pedal-down.
+    // The pedal UP is stamped hStamp+1 so it lands AFTER the note releases (B2Rank orders Pedal before Note at an equal
+    // playTime, and we don't rely on how the receiver breaks ties).
     public void StopLinked()
     {
-        if (_playing && _netMode && _netOpen.Count > 0)
+        if (_playing && _netMode && (_netOpen.Count > 0 || _netPedalDown))
         {
             long hStamp = (long)Math.Round(Math.Max(0, Math.Max(_sendHorizonMs, _sendFloorMs)));
             _payload.Clear();
@@ -181,15 +189,69 @@ public sealed partial class MidiPlayer
                 for (int i = 0; i < kv.Value; i++)
                     _payload.Append("recs[#recs+1]={syncType=E.EInstrumentSyncType.Note,playTime=__b2base+").Append(hStamp)
                             .Append(",playParam=").Append(kv.Key).Append(",playType=E.EInstrumentPlayType.Release,expectedSyncTime=0} ");
+            if (_netPedalDown) _payload.Append(PedalRec(false, hStamp + 1));
             SendRecsB2(_payload.ToString());
         }
         _netOpen.Clear();
+        _netPedalDown = false;
         StopReset();
     }
 
-    private void SendPedalAtB2(bool down, int posMs)
-        => SendRecsB2("recs[#recs+1]={syncType=E.EInstrumentSyncType.SustainPedal,playTime=__b2base+" + posMs +
-                      ",playParam=" + (down ? 1 : 0) + ",playType=E.EInstrumentPlayType.Press,expectedSyncTime=0} ");
+    // Song sustain-pedal state at song position `pos` (inclusive), from the current timeline.
+    private bool SongPedalAt(double pos)
+    {
+        bool down = false;
+        for (int i = 0; i < _timeline.Count && _timeline[i].RealMs <= pos; i++)
+        {
+            var t = _timeline[i].Type;
+            if (t == CmdType.PedalOn) down = true; else if (t == CmdType.PedalOff) down = false;
+        }
+        return down;
+    }
+
+    // Live force-sustain toggle in buffered mode (was: a blind down/up at the current position).
+    //   ON  → pedal down now, locally and for listeners; and again just after the send horizon, because song pedal
+    //         records up to the horizon were already sent and a later song pedal-UP among them would otherwise cancel it.
+    //   OFF → the SONG's pedal state at the current position (down if the timeline has it down there), locally and for
+    //         listeners — then re-send the song pedal records in (position, horizon] that were skipped while forced.
+    private void LiveForceSustainB2(bool on)
+    {
+        _b2ForcePedalSent = true;   // the SendBatchB2 start-down one-shot is covered by this live send
+        double pos = Math.Max(Math.Max(0, _realMs), _playFloorMs);
+        double h   = Math.Max(_sendHorizonMs, _sendFloorMs);
+        long   pt  = (long)Math.Round(pos);
+        _payload.Clear();
+        if (on)
+        {
+            _pedalDown = true;
+            FlushPedalB2(true);
+            _payload.Append(PedalRec(true, pt));
+            if (h > pos) _payload.Append(PedalRec(true, (long)Math.Round(h) + 1));
+            _netPedalDown = true;
+        }
+        else
+        {
+            bool down = SongPedalAt(pos);
+            _pedalDown = down;
+            FlushPedalB2(down);
+            _payload.Append(PedalRec(down, pt));
+            _netPedalDown = down;
+            for (int i = 0; i < _sendIdx && i < _timeline.Count; i++)
+            {
+                var c = _timeline[i];
+                if (c.RealMs <= pos || (c.Type != CmdType.PedalOn && c.Type != CmdType.PedalOff)) continue;
+                _payload.Append(PedalRec(c.Type == CmdType.PedalOn, (long)Math.Round(c.RealMs)));
+                _netPedalDown = c.Type == CmdType.PedalOn;
+            }
+        }
+        SendRecsB2(_payload.ToString());
+    }
+
+    private static string PedalRec(bool down, long pt)
+        => "recs[#recs+1]={syncType=E.EInstrumentSyncType.SustainPedal,playTime=__b2base+" + pt +
+           ",playParam=" + (down ? 1 : 0) + ",playType=E.EInstrumentPlayType.Press,expectedSyncTime=0} ";
+
+    private void SendPedalAtB2(bool down, int posMs) { _netPedalDown = down; SendRecsB2(PedalRec(down, posMs)); }
 
     private void SendRecsB2(string recs)
         => _services.Lua.DoString(

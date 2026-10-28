@@ -70,14 +70,7 @@ public sealed partial class MidiPlayer : IDisposable
             if (_forceSustain == value) return;
             _forceSustain = value;
             if (!_playing) return;                 // otherwise applied at Start
-            if (_netMode)
-            {
-                _pedalDown = value;
-                FlushPedalB2(value);          // local: set the pedal now (local-only)
-                SendPedalImmediateB2(value);  // network: SustainPedal down(1)/up(0) at the current position, for listeners
-                _b2ForcePedalSent = true;     // the SendBatchB2 start-down one-shot is now covered by this live send
-                return;
-            }
+            if (_netMode) { LiveForceSustainB2(value); return; }   // MidiPlayer.Link.cs: ON = down, OFF = the SONG's pedal state
             if (value) { FlushPedalB1(true); _pedalDown = true; }        // engage now
             else if (_pedalDown) { FlushPedalB1(false); _pedalDown = false; }  // release the held pedal
         }

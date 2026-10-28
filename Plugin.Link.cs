@@ -252,8 +252,10 @@ public sealed partial class Plugin
         // welcome.song is the ONLY rejoin message on (re)connect: the running song with its T and P (stemUrl null = no
         // part). OnLinkPlay downloads the stem and late-joins honouring startPositionMs; the same song + T + P we're
         // still playing is idempotent. No song on a RE-connect = the room stopped / paused / moved on while we were
-        // away → end the stale part (welcome carries no paused state).
+        // away → end the stale part. While the room is PAUSED, `song` is null and `paused` = {songId, title, positionMs,
+        // next} → show the Paused state (the resume arrives as a normal `play`).
         if (m.TryGetProperty("song", out var sg) && LinkSong.Parse(sg) is { } song) OnLinkPlay(song);
+        else if (m.TryGetProperty("paused", out var pz) && LinkSong.Parse(pz) is { } ps) OnLinkWelcomePaused(ps, LinkSettings.Int(pz, "positionMs") ?? 0);
         else if (!first && _lkRoomSong != null) OnLinkStop();
         if (set != null) OnLinkSettings(set, "now", fromWelcome: true);
     }

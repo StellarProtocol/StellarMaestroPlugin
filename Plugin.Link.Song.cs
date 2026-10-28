@@ -134,6 +134,21 @@ public sealed partial class Plugin
         _lkPrepSong = null;
     }
 
+    // welcome.paused (reconnect while the room is paused): rebuild the Paused view. The message has no durationMs /
+    // stemUrl — keep what we already knew about that song (same songId), else duration 0 until the resume `play`.
+    private void OnLinkWelcomePaused(LinkSong p, int positionMs)
+    {
+        StopLinkedPart();
+        var known = _lkRoomSong?.SongId == p.SongId ? _lkRoomSong : _lkPrepSong?.SongId == p.SongId ? _lkPrepSong : null;
+        if (known != null) { p.DurationMs = known.DurationMs; p.StemUrl = known.StemUrl; p.InstrumentId = known.InstrumentId; p.ToneId = known.ToneId; }
+        _lkRoomSong = p;
+        if (_lkPrepSong?.SongId == p.SongId) _lkPrepSong = null;
+        _lkStoppedByPlayer = false;
+        _lkPlayAckKey = "";
+        _lkPaused = true;
+        _lkPausedPosMs = positionMs;
+    }
+
     // "Stop my part": client-local; reported as stopped_by_player until the next `play`.
     private void StopMyPart()
     {
@@ -260,10 +275,12 @@ public sealed partial class Plugin
 
     // True while a room song we have a part in is running (until its end + 1.5 s clears _lkRoomSong) — a per-song
     // equip switch must not run then ("never mid-song"), even if our own stem already ended (shorter stem): the
-    // character visibly swapping instruments mid-song would read as a glitch. Resting / paused / player-stopped = free.
+    // character visibly swapping instruments mid-song would read as a glitch. A PAUSE also counts as in progress
+    // (protocol: a held switch runs only when the song really ends — a non-paused room stop, or the next song's play).
+    // Resting / player-stopped = free.
     private bool LinkSongInProgress()
         => _lkPartActive
-           || (_lkRoomSong != null && !_lkPaused && _lkRoomSong.StemUrl != null && !_lkStoppedByPlayer);
+           || (_lkRoomSong != null && (_lkPaused || (_lkRoomSong.StemUrl != null && !_lkStoppedByPlayer)));
 
     private void TryStartLinkedPart(LinkSong song)
     {

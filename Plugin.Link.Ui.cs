@@ -49,6 +49,7 @@ public sealed partial class Plugin
             new TextElement(() => _loc.T("mst.link.connecting"), Color: Muted)),
         new ConditionalElement(() => _lkPhase == LinkPhase.Off && _lkErrorKey.Length > 0,
             new TextElement(() => _lkErrorKey.Length > 0 ? _loc.T(_lkErrorKey) : "", Color: Warn)),
+        BuildLinkHowPanel(),   // Plugin.Link.How.cs
         new TextElement(() => _loc.T("mst.link.consent"), Color: Muted),
     }, Gap: 8f);
 

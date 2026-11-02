@@ -25,8 +25,18 @@ public sealed partial class MidiPlayer
 
     // Live network tuning (exposed via the Network Settings window).
     public int NetLookaheadMs { get => (int)_lookaheadMs;    set => _lookaheadMs    = Math.Clamp(value, 100, 1500); }
-    public int NetBatchMs     { get => (int)_sendIntervalMs; set => _sendIntervalMs = Math.Clamp(value, 16, 250); }
+    // 100–400: below 100 ms fast same-pitch repeats arrive with correct playTimes yet play late / out of order / stuck at
+    // the listener (batch 33 broke, 66 mostly OK, 100+ clean — sweep 2026-11-02, Band-Instrument-Playback.md).
+    public int NetBatchMs     { get => (int)_sendIntervalMs; set => _sendIntervalMs = Math.Clamp(value, 100, 400); }
     public int ToneLeadMs     { get => (int)_toneLeadMs;     set => _toneLeadMs     = Math.Clamp(value, 0, 500); }
+
+    // The lookahead the send loop ACTUALLY uses. Each send covers up to now + lookahead and the next one fires ~one batch
+    // interval later (rounded up to a frame), so a record is sent only (lookahead − interval, lookahead] ms before it plays.
+    // A batch ≥ lookahead (e.g. 400 vs 100) would therefore send notes AFTER their playTime → late/dropped at the listener.
+    // Floor it at batch + a 100 ms margin (frame quantisation + hitches + transit) without touching the user's saved value.
+    private const double SendLeadMarginMs = 100.0;
+    private double EffLookaheadMs => Math.Max(_lookaheadMs, _sendIntervalMs + SendLeadMarginMs);
+    public int EffectiveLookaheadMs => (int)EffLookaheadMs;
 
     private enum CmdType : byte { Release = 0, PedalOff = 1, PedalOn = 2, Press = 3 } // value = same-time ordering
 
@@ -343,7 +353,7 @@ public sealed partial class MidiPlayer
         }
 
         // Notes + song pedal events from the timeline (playType=Press always for pedal; up/down carried by playParam).
-        while (_sendIdx < _timeline.Count && _timeline[_sendIdx].RealMs <= _realMs + _lookaheadMs)
+        while (_sendIdx < _timeline.Count && _timeline[_sendIdx].RealMs <= _realMs + EffLookaheadMs)
         {
             var c = _timeline[_sendIdx++];
             long pt = (long)Math.Round(c.RealMs);
@@ -366,7 +376,7 @@ public sealed partial class MidiPlayer
                 ",playType=E.EInstrumentPlayType." + (c.Type == CmdType.Press ? "Press" : "Release") +
                 ",expectedSyncTime=0}", SyncNote, c.Key, c.Type == CmdType.Release));
         }
-        _sendHorizonMs = Math.Max(_sendHorizonMs, _realMs + _lookaheadMs);   // everything up to here is sent (keep-base rebuild boundary)
+        _sendHorizonMs = Math.Max(_sendHorizonMs, _realMs + EffLookaheadMs);   // everything up to here is sent (keep-base rebuild boundary)
 
         // Tone/technique program-change boundaries due in the SAME window (advances _effSendCur — this is now the ONLY
         // network emitter for continuous boundaries; TickInstrumentEffect only applies them locally). timbre/kind resolve
@@ -375,7 +385,7 @@ public sealed partial class MidiPlayer
         bool hasTone = false;
         long toneLead = (long)Math.Round(_toneLeadMs);
         if (pcs != null)
-            while (_effSendCur < pcs.Count && pcs[_effSendCur].ms <= _realMs + _lookaheadMs)
+            while (_effSendCur < pcs.Count && pcs[_effSendCur].ms <= _realMs + EffLookaheadMs)
             {
                 var (tc, tk) = EffectAt(pcs[_effSendCur].program);
                 // Give the tone/technique event-swap a real-time LEAD: stamp the setup record's playTime toneLeadMs

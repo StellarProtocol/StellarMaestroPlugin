@@ -43,7 +43,7 @@
   "mst.set.maxpoly": "Not maksimum",
   "mst.set.maxpoly.help": "Membatasi berapa not yang boleh berbunyi sekaligus. Bila terlampaui, not tertua (atau terendah dalam akor) dibuang. off = tanpa batas — turunkan bila bagian padat membanjiri instrumen.",
   "mst.set.restrike": "Jeda pukul-ulang",
-  "mst.set.restrike.help": "Ketika nada yang sama berulang, ia dilepas sekian milidetik ini sebelum dipukul lagi — termasuk not beruntun — agar tiap ulangan terdaftar sebagai not baru. off = lepas tepat saat ditekan lagi, yang membuat deretan nada-sama cepat hilang di sisi PENDENGAR pada mode Sinkron Jaringan.\n\nBawaan 16 md (tak terdengar). Naikkan bila deretan nada-sama padat masih hilang bagi pendengar.",
+  "mst.set.restrike.help": "Ketika nada yang sama berulang, ia dilepas sekian milidetik ini sebelum dipukul lagi — termasuk not beruntun — agar tiap ulangan terdaftar sebagai not baru. off = lepas tepat saat ditekan lagi, yang membuat deretan nada-sama cepat hilang di sisi PENDENGAR pada mode Sinkron Jaringan.\n\nBawaan 33 md (tak terdengar). Naikkan bila deretan nada-sama padat masih hilang bagi pendengar.",
   "mst.set.forceSustain": "Paksa sustain",
   "mst.set.forceSustain.help": "Menahan pedal sustain sepanjang lagu, sehingga tiap not berdengung sampai not berikutnya pada nada yang sama.\n\nTerbaik untuk piano, gitar, dan bass. Matikan untuk instrumen yang harus mengartikulasikan ulang tiap not.",
   "mst.set.applyTone": "Terapkan tone / teknik dari instrumen MIDI",

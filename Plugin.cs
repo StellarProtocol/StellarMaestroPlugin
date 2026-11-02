@@ -34,7 +34,10 @@ public sealed partial class Plugin : IStellarPlugin
         _bandTempoPct     = _cfg.Get<int> ("tempo_pct",      100);
         _bandMaxPoly      = _cfg.Get<int> ("max_poly",       0);
         _bandNetPrebuffer = _cfg.Get<bool>("net_prebuffer",  true);
-        _bandRestrikeGapMs = _cfg.Get<int> ("restrike_gap_ms", 16);   // default on: separates back-to-back same-pitch notes so they don't drop at the listener
+        _bandRestrikeGapMs = _cfg.Get<int> ("restrike_gap_ms", 33);   // default on: separates back-to-back same-pitch notes so they don't drop at the listener.
+        // 33, not 16: the release and the next same-pitch press must land in DIFFERENT receiver frames — within one frame the
+        // listener runs the press first and the release kills the new note. 16 ms clears a 60 fps listener only; a 30 fps one
+        // (33 ms frames) still silences the repeat (sweep 2026-11-02, Band-Instrument-Playback.md).
         _bandMuteLocal     = _cfg.Get<bool>("mute_local",      false);
         _bandShowKeyViz    = _cfg.Get<bool>("show_keyviz",     true);
         _bandApplyTone     = _cfg.Get<bool>("apply_tone",      false);

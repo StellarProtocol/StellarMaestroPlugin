@@ -43,7 +43,7 @@
   "mst.set.maxpoly": "Max notes",
   "mst.set.maxpoly.help": "Caps how many notes may sound at once. When exceeded, the oldest (or the lowest within a chord) notes are dropped. off = no cap — lower it if dense passages overwhelm the instrument.",
   "mst.set.restrike": "Restrike gap",
-  "mst.set.restrike.help": "When the same pitch repeats, it is released this many ms before being struck again — including back-to-back notes — so each repeat registers as a new note. off = release exactly at the re-press, which makes fast same-pitch runs drop at the LISTENER in Network Sync mode.\n\nDefault 16 ms (inaudible). Raise it if dense same-pitch runs still drop for listeners.",
+  "mst.set.restrike.help": "When the same pitch repeats, it is released this many ms before being struck again — including back-to-back notes — so each repeat registers as a new note. off = release exactly at the re-press, which makes fast same-pitch runs drop at the LISTENER in Network Sync mode.\n\nDefault 33 ms (inaudible). Raise it if dense same-pitch runs still drop for listeners.",
   "mst.set.forceSustain": "Force sustain",
   "mst.set.forceSustain.help": "Holds the sustain pedal down for the whole song, so each note rings until the next note on the same pitch.\n\nBest for piano, guitar and bass. Leave it off for instruments that should re-articulate every note.",
   "mst.set.applyTone": "Apply tone / technique from MIDI instrument",

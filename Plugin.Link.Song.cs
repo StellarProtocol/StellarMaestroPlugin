@@ -300,7 +300,7 @@ public sealed partial class Plugin
         long now  = _services.CombatSnapshot.ServerNowMs;   // read AFTER Load (Load/Stop can take real time)
         long T    = song.StartAtServerMs;                   // song position x sounds at T + x
         int  P    = song.StartPositionMs;                   // this play starts at P (seek / resume; 0 = top)
-        long lead = _bandPlayer.NetLookaheadMs + 300;       // the first note must be sendable a full lookahead early
+        long lead = _bandPlayer.EffectiveLookaheadMs + 300; // the first note must be sendable a full (effective) lookahead early
         // Protocol §2 `play`: P sounds at T + P. LATE JOIN when now > T + P − lead: start at now − T + lead instead,
         // base still T. Either way nothing before the start position is played or sent (MidiPlayer.SkipToKeepBase).
         long late = now - T + lead;

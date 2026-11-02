@@ -43,7 +43,7 @@
   "mst.set.maxpoly": "Max na nota",
   "mst.set.maxpoly.help": "Nililimitahan kung ilang nota ang maaaring tumunog nang sabay. Kapag nalampasan, ibinabagsak ang pinakaluma (o pinakamababa sa isang chord) na mga nota. off = walang limitasyon — babaan ito kung ang mga makakapal na bahagi ay nananaig sa instrumento.",
   "mst.set.restrike": "Puwang ng restrike",
-  "mst.set.restrike.help": "Kapag inuulit ang parehong pitch, pinapakawalan ito nang ganito karaming ms bago tamaan muli — kasama ang magkakasunod na nota — upang ang bawat ulit ay maitala bilang bagong nota. off = pinapakawalan nang eksakto sa muling pagpindot, na nagpapahulog sa mabilis na same-pitch na takbo sa TAGAPAKINIG sa Network Sync mode.\n\nDefault 16 ms (hindi naririnig). Taasan ito kung ang makakapal na same-pitch na takbo ay nahuhulog pa rin para sa mga tagapakinig.",
+  "mst.set.restrike.help": "Kapag inuulit ang parehong pitch, pinapakawalan ito nang ganito karaming ms bago tamaan muli — kasama ang magkakasunod na nota — upang ang bawat ulit ay maitala bilang bagong nota. off = pinapakawalan nang eksakto sa muling pagpindot, na nagpapahulog sa mabilis na same-pitch na takbo sa TAGAPAKINIG sa Network Sync mode.\n\nDefault 33 ms (hindi naririnig). Taasan ito kung ang makakapal na same-pitch na takbo ay nahuhulog pa rin para sa mga tagapakinig.",
   "mst.set.forceSustain": "Pilitin ang sustain",
   "mst.set.forceSustain.help": "Hinahawakang nakababa ang sustain pedal sa buong kanta, kaya ang bawat nota ay tumutunog hanggang sa susunod na nota sa parehong pitch.\n\nPinakamainam para sa piano, guitar at bass. Iwanang off para sa mga instrumentong dapat mag-articulate muli sa bawat nota.",
   "mst.set.applyTone": "Ilapat ang tone / teknik mula sa instrumentong MIDI",

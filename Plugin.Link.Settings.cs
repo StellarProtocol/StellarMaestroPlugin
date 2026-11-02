@@ -25,7 +25,7 @@ public sealed partial class Plugin
         if (tr != _lkTranspose || p.Transpose != tr) { _lkTranspose = tr; p.Transpose = tr; }
         int hold = s.HoldMs ?? 0;                          if (p.HoldOffsetMs != hold) p.HoldOffsetMs = hold;
         int poly = Math.Clamp(s.MaxPoly ?? 16, 1, 16);     if (p.MaxPolyphony != poly) p.MaxPolyphony = poly;
-        int gap  = Math.Clamp(s.RestrikeGapMs ?? 16, 0, 100); if (p.RestrikeGapMs != gap) p.RestrikeGapMs = gap;
+        int gap  = Math.Clamp(s.RestrikeGapMs ?? 33, 0, 100); if (p.RestrikeGapMs != gap) p.RestrikeGapMs = gap;
         bool sus = s.ForceSustain ?? false;                if (p.ForceSustain != sus) p.ForceSustain = sus;
 
         p.NetLookaheadMs       = s.NetAheadMs ?? 1500;

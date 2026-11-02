@@ -83,6 +83,7 @@ public sealed partial class MidiPlayer : IDisposable
 
     public void Load(MidiSong song)
     {
+        DiagEnd("switch");   // dev diag END row (no-op unless active and a song was playing/paused)
         Stop();
         _song = song;
         _startAtFrac = -1;
@@ -93,6 +94,7 @@ public sealed partial class MidiPlayer : IDisposable
     public void Start(int transpose)
     {
         if (_song == null) return;
+        DiagEnd("switch");
         Stop();
         _transpose = transpose;
         _elapsedMs = 0;
@@ -156,6 +158,7 @@ public sealed partial class MidiPlayer : IDisposable
     // Stop and reset to the beginning (the Stop button). Pause/Resume keep the position; this clears it.
     public void StopReset()
     {
+        DiagEnd("stop");
         Stop();
         _completed   = false;
         _elapsedMs   = 0;
@@ -164,7 +167,7 @@ public sealed partial class MidiPlayer : IDisposable
     }
 
     // Natural end of song → stop and latch a completion the playlist controller can consume to auto-advance.
-    private void EndReached() { Stop(); _completed = true; }
+    private void EndReached() { DiagEnd("finished"); Stop(); _completed = true; }
 
     // Returns true once after a song finished on its own (not a user Stop/Pause), clearing the latch.
     public bool ConsumeCompleted() { if (!_completed) return false; _completed = false; return true; }
@@ -174,6 +177,7 @@ public sealed partial class MidiPlayer : IDisposable
     public void Pause()
     {
         if (!_playing) return;
+        DiagEnd("pause");
         if (_netMode) ReleaseAllHeldB2(); else ReleaseAllHeld();
         _held.Clear();
         _heldOrder.Clear();

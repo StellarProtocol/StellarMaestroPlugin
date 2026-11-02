@@ -316,6 +316,7 @@ public sealed partial class Plugin
         _lkPartKey    = LinkKey(song);
         AckPlay(true);
         LinkDiagRow($"START\t{now}\t{song.SongId}\t{T}\t{startPos}");
+        LinkDiagCfgRow(now);
         _services.Log.Info($"[MaestroLink] part start song={song.SongId} T={T} P={P} now={now} startPos={startPos}ms" +
                            (startPos > P ? " (LATE JOIN)" : $" (count-in {T + P - now}ms)"));
     }

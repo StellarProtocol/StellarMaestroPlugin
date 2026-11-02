@@ -7,9 +7,10 @@ namespace Stellar.Maestro;
 // MAESTRO LINK — dev-only sync diagnostics (left over from the 2026-10-28 spike that proved shared-T band sync).
 // Fully DORMANT unless C:\Users\Public\maestro-link-spike\ exists (probed every 2 s; activation lazily installs the
 // read-only LinkSpikeDiagPatch). No UI, no user-facing strings — log lines + one file:
-//   diag-<CharacterName>.tsv → PLAY/RECV rows (what each listener heard, stamped with ServerNowMs) + START rows when a
+//   diag-<CharacterName>.tsv → PLAY/REL/RECV rows (what each listener heard, stamped with ServerNowMs) + START rows when a
 //                               Link part starts; flushed ~1 Hz. Diff two clients' files to measure per-note band delta.
-// The spike's cmd.json file-command poller was removed — Maestro Link (Plugin.Link*.cs) is the real transport now.
+// The spike's cmd.json file-command poller was removed — Maestro Link (Plugin.Link*.cs) is the real transport now. The
+// note-accuracy sweep adds SEND/END/CFG/CMD rows + a cmd.txt poller (MidiPlayer.Diag.cs, Plugin.SweepCmd.cs).
 // Server time is ALWAYS CombatSnapshot.ServerNowMs — never reflect ZServerTime (Server-Clock-and-Ping-HUD.md).
 public sealed partial class Plugin
 {
@@ -47,6 +48,7 @@ public sealed partial class Plugin
                 catch (Exception ex) { _services.Log.Warning($"[MaestroLink] diag patch install failed: {ex.Message}"); }
                 return;
             }
+            SweepCmdTick(dt);   // dev-only file-command poller (Plugin.SweepCmd.cs)
             _ldFlushAccumMs += dt * 1000.0;
             if (_ldFlushAccumMs < 1000) return;
             _ldFlushAccumMs = 0;

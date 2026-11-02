@@ -158,6 +158,7 @@ public sealed partial class Plugin
         ApplyEnsembleGrid(song.Bpm);   // if syncing: anchor base + count-in + tempo-scale to the ensemble; else normal
         _bandPlayer.Load(song);
         _bandPlayer.Start(_bandTranspose);
+        LinkDiagPlainStart(songs[i]);   // dev-only START/CFG rows (no-op unless the diag folder is present)
 
         _nowPlaying = i; _queueSel = i;
         string pedal = song.PedalCount > 0 ? $", pedal x{song.PedalCount}" : "";

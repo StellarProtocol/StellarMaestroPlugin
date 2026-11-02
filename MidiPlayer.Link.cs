@@ -254,7 +254,10 @@ public sealed partial class MidiPlayer
     private void SendPedalAtB2(bool down, int posMs) { _netPedalDown = down; SendRecsB2(PedalRec(down, posMs)); }
 
     private void SendRecsB2(string recs)
-        => _services.Lua.DoString(
+    {
+        DiagSendRecs(recs);   // dev-only SEND rows (no-op unless the diag folder is present)
+        _services.Lua.DoString(
             "pcall(function() local vm=Z.VMMgr.GetVM('band') local tok=Z.DataMgr.Get('band_data').CancelSource:CreateToken() local recs={} " +
             recs + "if #recs>0 then Z.CoroUtil.create_coro_xpcall(function() vm:AsyncSendInstrumentSyncData(recs, tok) end)() end end)");
+    }
 }

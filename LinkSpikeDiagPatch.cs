@@ -8,7 +8,7 @@ using Stellar.Abstractions.Services;
 namespace Stellar.Maestro;
 
 // MAESTRO-LINK SYNC SPIKE (dev diagnostic, gated by the spike folder — see Plugin.LinkDiag.cs).
-// Listener-side measurement log: what arrived off the network (RECV) and what actually played (PLAY), stamped with the
+// Listener-side measurement log: what arrived off the network (RECV) and what actually played (PLAY) / released (REL), stamped with the
 // framework's server clock. Own notes come back too via the server-player "own-echo" path (Band-Instrument-Playback.md
 // "Double note" own-echo), so ONE client's log carries both its own echo and every other performer → the per-note delta
 // between entities IS the band-sync error.
@@ -16,6 +16,8 @@ namespace Stellar.Maestro;
 // Patch targets (release_3.7_2 dump.cs):
 //   229283  public void EntityInstrumentPlayNote(ZEntity entity, int note, bool isLocal = False)   — POSTFIX
 //   229325  private void onInstrumentPlayEvent(ZEntity entity, RepeatedField<InstrumentSyncData>) — PREFIX
+//   228440  public void EntityInstrumentReleaseNote(ZEntity entity, int note, bool isLocal = False) — POSTFIX (REL rows;
+//           line no. from the current Resources\release_3.7 dump — the two above are from the older _2 dump)
 // Neither has an `in`-struct param (those crash via the trampoline). The framework's ToneRelay already PREFIXES
 // onInstrumentPlayEvent — Harmony chains both; ours is read-only. Prefix (not postfix) on the batch handler because
 // InstrumentSyncData is IObjPooled (dump.cs 731230): after the original returns the records may already be recycled.
@@ -58,9 +60,19 @@ internal static class LinkSpikeDiagPatch
             try { harmony.Patch(mRecv, prefix: new HarmonyMethod(typeof(LinkSpikeDiagPatch), nameof(PreRecv))); recv = true; }
             catch (Exception ex) { log($"[LinkSpike] onInstrumentPlayEvent patch failed: {ex.Message}"); }
 
-        log($"[LinkSpike] diag patches: PLAY={play} RECV={recv}");
-        return play || recv;
+        bool rel = false;
+        var mRel = StellarInterop.FindMethod(t, "EntityInstrumentReleaseNote", 3);
+        if (mRel != null)
+            try { harmony.Patch(mRel, postfix: new HarmonyMethod(typeof(LinkSpikeDiagPatch), nameof(PostReleaseNote))); rel = true; }
+            catch (Exception ex) { log($"[LinkSpike] ReleaseNote patch failed: {ex.Message}"); }
+
+        log($"[LinkSpike] diag patches: PLAY={play} REL={rel} RECV={recv}");
+        return play || recv || rel;
     }
+
+    // True once the diag is active AND its file is bound — callers gate row-building on this so the dormant path costs
+    // one field read (patches + player hooks run on the main thread).
+    internal static bool On => _path != null;
 
     internal static void SetLogFile(string path)
     {
@@ -102,6 +114,20 @@ internal static class LinkSpikeDiagPatch
             long now = _serverNow?.Invoke() ?? 0;
             int note = Convert.ToInt32(__args[1]);
             Row($"PLAY\t{now}\t{uuid}\t{(uuid == SelfUuid ? 1 : 0)}\t{note}");
+        }
+        catch { /* never break band audio */ }
+    }
+
+    // __args = (ZEntity entity, int note, bool isLocal) — same shape as PlayNote (dump.cs 228440). Remote/echo releases
+    // only: our own local-audio releases (isLocal=true) are the plugin's own timeline, already in the SEND rows.
+    private static void PostReleaseNote(object?[] __args)
+    {
+        try
+        {
+            if (__args == null || __args.Length < 3 || __args[0] == null || Convert.ToBoolean(__args[2])) return;
+            long uuid = Convert.ToInt64(_piUuid!.GetValue(__args[0]));
+            long now  = _serverNow?.Invoke() ?? 0;
+            Row($"REL\t{now}\t{uuid}\t{(uuid == SelfUuid ? 1 : 0)}\t{Convert.ToInt32(__args[1])}");
         }
         catch { /* never break band audio */ }
     }

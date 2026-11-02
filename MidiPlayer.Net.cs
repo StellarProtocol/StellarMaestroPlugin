@@ -46,10 +46,11 @@ public sealed partial class MidiPlayer
     {
         public readonly long PlayTime; public readonly B2Rank Rank; public readonly int Seq;
         public readonly string? Frag; public readonly int ToneCat, TechKind;
-        public B2Item(long playTime, B2Rank rank, int seq, string frag)
-        { PlayTime = playTime; Rank = rank; Seq = seq; Frag = frag; ToneCat = 0; TechKind = 0; }
+        public readonly int Sync, Param; public readonly bool Release;   // what Frag encodes — dev diag SEND rows only (MidiPlayer.Diag.cs)
+        public B2Item(long playTime, B2Rank rank, int seq, string frag, int sync, int param, bool release = false)
+        { PlayTime = playTime; Rank = rank; Seq = seq; Frag = frag; ToneCat = 0; TechKind = 0; Sync = sync; Param = param; Release = release; }
         public B2Item(long playTime, int seq, int toneCat, int techKind)
-        { PlayTime = playTime; Rank = B2Rank.Tone; Seq = seq; Frag = null; ToneCat = toneCat; TechKind = techKind; }
+        { PlayTime = playTime; Rank = B2Rank.Tone; Seq = seq; Frag = null; ToneCat = toneCat; TechKind = techKind; Sync = SyncTone; Param = -1; Release = false; }
     }
     private readonly List<B2Item> _batch = new();   // reusable scratch for the merged batch
 
@@ -338,7 +339,7 @@ public sealed partial class MidiPlayer
             _netPedalDown = true;
             _batch.Add(new B2Item(_b2ForcePedalAtMs, B2Rank.Pedal, seq++,
                 "{syncType=E.EInstrumentSyncType.SustainPedal,playTime=__b2base+" + _b2ForcePedalAtMs +
-                ",playParam=1,playType=E.EInstrumentPlayType.Press,expectedSyncTime=0}"));
+                ",playParam=1,playType=E.EInstrumentPlayType.Press,expectedSyncTime=0}", SyncPedal, 1));
         }
 
         // Notes + song pedal events from the timeline (playType=Press always for pedal; up/down carried by playParam).
@@ -353,7 +354,7 @@ public sealed partial class MidiPlayer
                 _batch.Add(new B2Item(pt, B2Rank.Pedal, seq++,
                     "{syncType=E.EInstrumentSyncType.SustainPedal,playTime=__b2base+" + pt +
                     ",playParam=" + (c.Type == CmdType.PedalOn ? 1 : 0) +
-                    ",playType=E.EInstrumentPlayType.Press,expectedSyncTime=0}"));
+                    ",playType=E.EInstrumentPlayType.Press,expectedSyncTime=0}", SyncPedal, c.Type == CmdType.PedalOn ? 1 : 0));
                 continue;
             }
             if (c.Type != CmdType.Press && c.Type != CmdType.Release) continue;
@@ -363,7 +364,7 @@ public sealed partial class MidiPlayer
                 "{syncType=E.EInstrumentSyncType.Note,playTime=__b2base+" + pt +
                 ",playParam=" + c.Key +
                 ",playType=E.EInstrumentPlayType." + (c.Type == CmdType.Press ? "Press" : "Release") +
-                ",expectedSyncTime=0}"));
+                ",expectedSyncTime=0}", SyncNote, c.Key, c.Type == CmdType.Release));
         }
         _sendHorizonMs = Math.Max(_sendHorizonMs, _realMs + _lookaheadMs);   // everything up to here is sent (keep-base rebuild boundary)
 
@@ -404,6 +405,8 @@ public sealed partial class MidiPlayer
             c = ((byte)a.Rank).CompareTo((byte)b.Rank);
             return c != 0 ? c : a.Seq.CompareTo(b.Seq);
         });
+
+        DiagSendBatch(_batch);   // dev-only SEND rows (no-op unless the diag folder is present)
 
         _payload.Clear();
         foreach (var it in _batch)

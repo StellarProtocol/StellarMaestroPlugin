@@ -128,7 +128,7 @@ public sealed partial class Plugin
         BuildMonitorVolumeRow(),
         HelpToggle("force_sustain",
             () => _bandForceSustain,
-            v  => { _bandForceSustain = v; _bandPlayer.ForceSustain = v; _cfg.Set<bool>("force_sustain", v); _cfg.Save(); },
+            SetForceSustain,
             () => _loc.T("mst.set.forceSustain"),
             () => _loc.T("mst.set.forceSustain.help")),
         HelpToggle("apply_tone",
@@ -145,12 +145,12 @@ public sealed partial class Plugin
             enabled: () => _bandNetPrebuffer && _bandApplyTone),
         HelpToggle("net_prebuffer",
             () => _bandNetPrebuffer,
-            v  => { _bandNetPrebuffer = v; _cfg.Set<bool>("net_prebuffer", v); _cfg.Save(); },
+            SetNetPrebuffer,
             () => _loc.T("mst.set.netSync"),
             () => _loc.T("mst.set.netSync.help")),
         HelpToggle("mute_local",
             () => _bandMuteLocal,
-            v  => { _bandMuteLocal = v; _bandPlayer.MuteLocal = v; _cfg.Set<bool>("mute_local", v); _cfg.Save(); },
+            SetMuteLocal,
             () => _loc.T("mst.set.muteLocal"),
             () => _bandNetPrebuffer
                 ? _loc.T("mst.set.muteLocal.help.on")
@@ -354,6 +354,11 @@ public sealed partial class Plugin
         _cfg.Set<int>("restrike_gap_ms", _bandRestrikeGapMs);
         _cfg.Save();
     }
+
+    // Named (not inline lambdas) so the dev-only sweep command poller (Plugin.SweepCmd.cs) goes through the exact UI path.
+    private void SetForceSustain(bool v) { _bandForceSustain = v; _bandPlayer.ForceSustain = v; _cfg.Set<bool>("force_sustain", v); _cfg.Save(); }
+    private void SetNetPrebuffer(bool v) { _bandNetPrebuffer = v; _cfg.Set<bool>("net_prebuffer", v); _cfg.Save(); }   // applied to the player at next Play
+    private void SetMuteLocal(bool v)    { _bandMuteLocal = v; _bandPlayer.MuteLocal = v; _cfg.Set<bool>("mute_local", v); _cfg.Save(); }
 
     // True only while the PC free-play performance view is open (instrument summoned). Checked at click time
     // (a per-frame Enabled poll would run Lua every frame).

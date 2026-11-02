@@ -7,13 +7,14 @@ namespace Stellar.Maestro;
 
 // DEV-ONLY note-accuracy diagnostics for the player (dormant unless the maestro-link-spike folder exists — the rows go
 // through LinkSpikeDiagPatch.Row, which is a no-op until Plugin.LinkDiag.cs binds the diag-<name>.tsv file).
-//   SEND\t{serverNow}\t{syncType}\t{playType}\t{playParam}\t{playTime}  — every buffered (B2) record we send, AFTER the
+//   SEND\t{serverNow}\t{syncType}\t{playType}\t{playParam}\t{playTime}\t{localMs}  — every buffered (B2) record we send, AFTER the
 //        plugin's own transforms (restrike gap, hold, tempo, pedal/force-sustain, tone lead). Same int encodings as the
 //        RECV row: syncType Note=0/Technique=1/Tone=2/SustainPedal=3, playType Press=1/Release=2 (dump.cs 697783/697804,
 //        pb_enum_define.lua:158/188). playTime is ABSOLUTE: __b2base (read back from Lua — it is re-anchored on
 //        seek/resume) + the record's offset. Tone/Technique playParam is -1: timbre/kind resolve inside Lua (C# never
 //        sees them).
-//   END\t{serverNow}\t{reason}  — a playing/paused song stopped: finished / stop / pause / switch.
+//   END\t{serverNow}\t{reason}\t{localMs}  — a playing/paused song stopped: finished / stop / pause / switch.
+// Every row ends with localMs = LinkSpikeDiagPatch.LocalMs (never-resyncing local Stopwatch, ms, 0.1 ms resolution).
 public sealed partial class MidiPlayer
 {
     private const int SyncNote = 0, SyncTechnique = 1, SyncTone = 2, SyncPedal = 3;
@@ -73,13 +74,13 @@ public sealed partial class MidiPlayer
 
     private static void AppendSend(StringBuilder sb, long now, int sync, int playType, int param, long playTime)
         => sb.Append("SEND\t").Append(now).Append('\t').Append(sync).Append('\t').Append(playType).Append('\t')
-             .Append(param).Append('\t').Append(playTime).Append('\n');
+             .Append(param).Append('\t').Append(playTime).Append('\t').Append(LinkSpikeDiagPatch.LocalMs).Append('\n');
 
     // END row — only when a song was actually playing or paused (Start/Load call Stop() on an idle player too).
     private void DiagEnd(string reason)
     {
         if (!LinkSpikeDiagPatch.On || (!_playing && !_paused)) return;
-        try { LinkSpikeDiagPatch.Row($"END\t{_services.CombatSnapshot.ServerNowMs}\t{reason}"); } catch { }
+        try { LinkSpikeDiagPatch.Row($"END\t{_services.CombatSnapshot.ServerNowMs}\t{reason}\t{LinkSpikeDiagPatch.LocalMs}"); } catch { }
     }
 
     // The base the network timeline is anchored to: __b2base in buffered mode; 0 in B1 (no shared base — the game

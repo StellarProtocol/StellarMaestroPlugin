@@ -39,6 +39,13 @@ internal static class LinkSpikeDiagPatch
     // also LEARN it from the local-audio call: B2 plays local audio via EntityInstrumentPlayNote(PlayerEnt, key, true).
     internal static long SelfUuid;
 
+    // LOCAL monotonic clock for the trailing `localMs` column on every row (and the CLK rows, Plugin.LinkDiag.cs). Both
+    // server clocks (framework ServerNowMs, game Lua Z.ServerTime) can STEP when they resync; this one never does, so it
+    // is the reference to see their steps against. One process-wide Stopwatch, started at type init; ms since then with
+    // 0.1 ms resolution, invariant culture (no locale decimal comma in the TSV).
+    private static readonly System.Diagnostics.Stopwatch _local = System.Diagnostics.Stopwatch.StartNew();
+    internal static string LocalMs => _local.Elapsed.TotalMilliseconds.ToString("F1", System.Globalization.CultureInfo.InvariantCulture);
+
     internal static bool Install(Harmony harmony, Func<long> serverNow, Action<string> log)
     {
         _serverNow = serverNow;
@@ -113,7 +120,7 @@ internal static class LinkSpikeDiagPatch
             }
             long now = _serverNow?.Invoke() ?? 0;
             int note = Convert.ToInt32(__args[1]);
-            Row($"PLAY\t{now}\t{uuid}\t{(uuid == SelfUuid ? 1 : 0)}\t{note}");
+            Row($"PLAY\t{now}\t{uuid}\t{(uuid == SelfUuid ? 1 : 0)}\t{note}\t{LocalMs}");
         }
         catch { /* never break band audio */ }
     }
@@ -127,7 +134,7 @@ internal static class LinkSpikeDiagPatch
             if (__args == null || __args.Length < 3 || __args[0] == null || Convert.ToBoolean(__args[2])) return;
             long uuid = Convert.ToInt64(_piUuid!.GetValue(__args[0]));
             long now  = _serverNow?.Invoke() ?? 0;
-            Row($"REL\t{now}\t{uuid}\t{(uuid == SelfUuid ? 1 : 0)}\t{Convert.ToInt32(__args[1])}");
+            Row($"REL\t{now}\t{uuid}\t{(uuid == SelfUuid ? 1 : 0)}\t{Convert.ToInt32(__args[1])}\t{LocalMs}");
         }
         catch { /* never break band audio */ }
     }
@@ -158,7 +165,8 @@ internal static class LinkSpikeDiagPatch
             long now  = _serverNow?.Invoke() ?? 0;
             long uuid = Convert.ToInt64(_piUuid!.GetValue(__args[0]));
             int  self = uuid == SelfUuid ? 1 : 0;
-            var sb = new StringBuilder(n * 48);
+            string local = LocalMs;                                   // one stamp per batch, like `now`
+            var sb = new StringBuilder(n * 56);
             for (int i = 0; i < n; i++)
             {
                 var rec = StellarInterop.Item(events, i);
@@ -167,7 +175,7 @@ internal static class LinkSpikeDiagPatch
                   .Append(Convert.ToInt32(_piSync.GetValue(rec))).Append('\t')
                   .Append(Convert.ToInt32(_piPlayType.GetValue(rec))).Append('\t')
                   .Append(Convert.ToInt32(_piParam.GetValue(rec))).Append('\t')
-                  .Append(Convert.ToInt64(_piPlayTime.GetValue(rec))).Append('\n');
+                  .Append(Convert.ToInt64(_piPlayTime.GetValue(rec))).Append('\t').Append(local).Append('\n');
             }
             lock (_lock) { if (_path != null) _buf.Append(sb); }
         }

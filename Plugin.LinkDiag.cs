@@ -11,6 +11,8 @@ namespace Stellar.Maestro;
 //                               Link part starts; flushed ~1 Hz. Diff two clients' files to measure per-note band delta.
 // The spike's cmd.json file-command poller was removed — Maestro Link (Plugin.Link*.cs) is the real transport now. The
 // note-accuracy sweep adds SEND/END/CFG/CMD rows + a cmd.txt poller (MidiPlayer.Diag.cs, Plugin.SweepCmd.cs).
+// Every row ends with a trailing localMs column (local Stopwatch, LinkSpikeDiagPatch.LocalMs); CLK rows (below) log
+// both server clocks against it.
 // Server time is ALWAYS CombatSnapshot.ServerNowMs — never reflect ZServerTime (Server-Clock-and-Ping-HUD.md).
 public sealed partial class Plugin
 {
@@ -49,6 +51,7 @@ public sealed partial class Plugin
                 return;
             }
             SweepCmdTick(dt);   // dev-only file-command poller (Plugin.SweepCmd.cs)
+            LinkDiagClockTick(dt);
             _ldFlushAccumMs += dt * 1000.0;
             if (_ldFlushAccumMs < 1000) return;
             _ldFlushAccumMs = 0;
@@ -56,6 +59,32 @@ public sealed partial class Plugin
             LinkSpikeDiagPatch.Flush();
         }
         catch (Exception ex) { _services.Log.Warning($"[MaestroLink] diag tick error: {ex.Message}"); }
+    }
+
+    // CLK\t{serverNow}\t{luaServerTime}\t{localMs} at ~10 Hz — both server clocks against the never-resyncing local
+    // Stopwatch, to see whether either STEPS on its ~5 s resync (no latency correction) and skews received note timing.
+    //   serverNow     = framework CombatSnapshot.ServerNowMs (what PLAY/REL/RECV `now` use)
+    //   luaServerTime = game Lua Z.ServerTime:GetServerTime() (what __b2base / SEND playTime use). Read the same one-way
+    //                   way as __b2base: DoString parks it in a global, typed-number readback. NEVER via C# reflection /
+    //                   GetSingleton on ZServerTime — that stalls the game's clock (Server-Clock-and-Ping-HUD.md).
+    //                   The global is nil'd first inside the pcall, so a failed call can't leave a stale value → -1.
+    private double _ldClockAccumMs;
+
+    private void LinkDiagClockTick(float dt)
+    {
+        _ldClockAccumMs += dt * 1000.0;
+        if (_ldClockAccumMs < 100) return;
+        _ldClockAccumMs = 0;
+        if (!LinkSpikeDiagPatch.On) return;   // no file bound yet → skip the Lua round-trip too
+        long now = _services.CombatSnapshot.ServerNowMs;
+        long lua = -1;
+        try
+        {
+            _services.Lua.DoString("pcall(function() rawset(_G,'__mdclk',nil) rawset(_G,'__mdclk', Z.ServerTime:GetServerTime()) end)");
+            if (_services.Lua.TryReadGlobalNumber("__mdclk", out double v)) lua = (long)v;
+        }
+        catch { }
+        LinkDiagRow($"CLK\t{now}\t{lua}\t{LinkSpikeDiagPatch.LocalMs}");
     }
 
     // Own character name binds the log file; the self uuid lets rows flag the own-echo (LocalEntityId is None until the

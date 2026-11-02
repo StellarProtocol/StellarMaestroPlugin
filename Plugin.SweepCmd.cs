@@ -47,7 +47,7 @@ public sealed partial class Plugin
         {
             var line = raw.Trim();
             if (line.Length == 0 || line.StartsWith("#")) continue;
-            LinkDiagRow($"CMD\t{_services.CombatSnapshot.ServerNowMs}\t{line}");
+            LinkDiagRow($"CMD\t{_services.CombatSnapshot.ServerNowMs}\t{line}\t{LinkSpikeDiagPatch.LocalMs}");
             string? detail = null, err;
             try { err = RunSweepCmd(line, out detail); }
             catch (Exception ex) { err = ex.Message; }
@@ -153,7 +153,7 @@ public sealed partial class Plugin
 
     private void LinkDiagCfgRow(long now)
     {
-        if (LinkSpikeDiagPatch.On) LinkDiagRow($"CFG\t{now}\t{SweepCfg()}");
+        if (LinkSpikeDiagPatch.On) LinkDiagRow($"CFG\t{now}\t{SweepCfg()}\t{LinkSpikeDiagPatch.LocalMs}");
     }
 
     // Plain (non-Link) playback start — same START layout as the Link row (Plugin.Link.Song.cs):
@@ -168,7 +168,7 @@ public sealed partial class Plugin
         {
             long now = _services.CombatSnapshot.ServerNowMs;
             long b   = _bandPlayer.DiagSongBaseMs();
-            LinkDiagRow($"START\t{now}\t{Path.GetFileName(entry)}\t{(b != 0 ? b : now)}\t{_bandPlayer.PositionMs}");
+            LinkDiagRow($"START\t{now}\t{Path.GetFileName(entry)}\t{(b != 0 ? b : now)}\t{_bandPlayer.PositionMs}\t{LinkSpikeDiagPatch.LocalMs}");
             LinkDiagCfgRow(now);
         }
         catch { }

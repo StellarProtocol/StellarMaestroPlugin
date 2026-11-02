@@ -68,24 +68,4 @@ internal static class EnsemblePatch
         }
         catch (Exception ex) { _onLog?.Invoke($"[EnsemblePatch] Read error: {ex.Message}"); return null; }
     }
-
-    // Current server time (ms) via ZServerTime : ZSingleton<ZServerTime>.GetServerTime(). -1 if unavailable.
-    private static MethodInfo? _mServerTime;
-    private static object?     _serverTimeInst;
-    internal static long ReadServerTime()
-    {
-        try
-        {
-            if (_mServerTime == null || _serverTimeInst == null)
-            {
-                var t = StellarInterop.FindType("ZServerTime") ?? StellarInterop.FindType("Panda.Utility.ZServerTime");
-                if (t == null) { _onLog?.Invoke("[EnsemblePatch] ZServerTime type not found"); return -1; }
-                _serverTimeInst = StellarInterop.GetSingleton(t);
-                _mServerTime = t.GetMethod("GetServerTime", BindingFlags.Instance | BindingFlags.Public);
-                if (_serverTimeInst == null || _mServerTime == null) { _onLog?.Invoke($"[EnsemblePatch] ZServerTime inst={_serverTimeInst != null} getter={_mServerTime != null}"); return -1; }
-            }
-            return Convert.ToInt64(_mServerTime.Invoke(_serverTimeInst, null));
-        }
-        catch (Exception ex) { _onLog?.Invoke($"[EnsemblePatch] ReadServerTime error: {ex.Message}"); return -1; }
-    }
 }

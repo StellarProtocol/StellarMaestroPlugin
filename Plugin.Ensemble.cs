@@ -6,7 +6,7 @@ namespace Stellar.Maestro;
 
 // Ensemble (合奏) support: play the auto-player locked to the ensemble's shared beat grid, counting in to the next
 // measure downbeat so it lands in time with the metronome and other performers. Grid params (bpm/beat/startTs) and
-// the current server time are read from C# via EnsemblePatch; the player anchors both its local audio and the
+// the current server time are read via EnsemblePatch (grid) and a Lua readback (clock); the player anchors both its local audio and the
 // network send to the grid. Leader/member both work — you just need to be in an ensemble. See Band-Instrument-Playback.md.
 public sealed partial class Plugin
 {
@@ -106,6 +106,24 @@ public sealed partial class Plugin
             Color: () => (ColorRgba?)_services.Theme.Colors.TextMuted),
     }, Gap: 6f);
 
+    // Current server time (ms) in the SAME clock as the grid math: the game's Lua Z.ServerTime:GetServerTime(), which is
+    // what the ensemble start timestamp is stamped against and what __b2base (= the EnsembleBaseMs we compute) is
+    // compared to by every listener. NOT CombatSnapshot.ServerNowMs — that's the framework's interpolated clock, ~1 s
+    // offset from the Lua one (Band-Instrument-Playback.md "Note-accuracy sweep diagnostics"), which would shift the
+    // count-in. And NEVER C# reflection / GetSingleton on ZServerTime — that stalls the game's clock instance (0 ms ping
+    // + frozen night, Server-Clock-and-Ping-HUD.md). One-way DoString parks the value in a global (nil'd first inside the
+    // pcall so a failed call can't leave a stale value), then a typed-number readback — synchronous, same frame. -1 = fail.
+    private long ReadLuaServerTime()
+    {
+        try
+        {
+            _services.Lua.DoString("pcall(function() rawset(_G,'__mens_now',nil) rawset(_G,'__mens_now', Z.ServerTime:GetServerTime()) end)");
+            if (_services.Lua.TryReadGlobalNumber("__mens_now", out double v)) return (long)v;
+        }
+        catch (Exception ex) { _services.Log.Warning($"[Maestro] ensemble server-time read error: {ex.Message}"); }
+        return -1;
+    }
+
     // Compute the grid-aligned base + count-in offset and tempo-scale, and apply to the player (called just before
     // Start). Tempo-scaling the song to the ensemble BPM + the downbeat base = every note lands on the ensemble beat
     // grid (for steady-tempo songs). Returns true if applied (in an ensemble, buffered on, sync enabled).
@@ -117,8 +135,12 @@ public sealed partial class Plugin
         var r = EnsemblePatch.Read();
         if (r == null || r.Value.inEnsemble != 1 || r.Value.bpm <= 0 || r.Value.beat <= 0) return false;
 
-        long now = EnsemblePatch.ReadServerTime();
-        if (now <= 0) return false;
+        long now = ReadLuaServerTime();
+        if (now <= 0)
+        {
+            _services.Log.Warning("[Maestro] ensemble grid: Lua server time unreadable — playing without grid alignment");
+            return false;
+        }
 
         double measureMs = r.Value.beat * (60000.0 / r.Value.bpm);
         long   lead      = _bandAheadMs + 300;                                   // downbeat must be far enough out to send note 0 ahead

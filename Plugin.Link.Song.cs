@@ -260,7 +260,7 @@ public sealed partial class Plugin
             _lkPartActive  = false;
             _lkPartDoneKey = _lkPartKey;
         }
-        long now = _services.CombatSnapshot.ServerNowMs;
+        long now = LinkServerNowMs();
         var song = _lkRoomSong;
         if (song != null && !_lkPaused && !_lkPartActive && now > 0 && now > song.StartAtServerMs + song.DurationMs + 1500)
             _lkRoomSong = song = null;   // the room's song is over (server schedules the next at end + 2 s)
@@ -291,13 +291,14 @@ public sealed partial class Plugin
         if (stem.Loading) return;
         if (stem.Song == null) { AckPlay(false, stem.Error ?? "download_failed"); _lkPartDoneKey = LinkKey(song); return; }
 
-        if (_services.CombatSnapshot.ServerNowMs <= 0) { AckPlay(false, "not_synced"); return; }
+        if (LinkServerNowMs() <= 0) { AckPlay(false, "not_synced"); return; }
         if (ReadPlayerInstrumentId() <= 0) { AckPlay(false, "no_instrument"); return; }
         if (!IsBandViewOpen()) { AckPlay(false, "band_view_closed"); return; }
 
         ApplyLinkPlayerSettings();
         _bandPlayer.Load(stem.Song);
-        long now  = _services.CombatSnapshot.ServerNowMs;   // read AFTER Load (Load/Stop can take real time)
+        RefreshLinkClock();                                 // fresh game-clock correction for the start math
+        long now  = LinkServerNowMs();                      // read AFTER Load (Load/Stop can take real time)
         long T    = song.StartAtServerMs;                   // song position x sounds at T + x
         int  P    = song.StartPositionMs;                   // this play starts at P (seek / resume; 0 = top)
         long lead = _bandPlayer.EffectiveLookaheadMs + 300; // the first note must be sendable a full (effective) lookahead early
@@ -316,7 +317,7 @@ public sealed partial class Plugin
         _lkPartKey    = LinkKey(song);
         AckPlay(true);
         LinkDiagLinkStart(now, song.SongId, T, startPos);   // dev-only START/CFG rows (DEBUG builds; no-op unless the diag folder is present)
-        _services.Log.Info($"[MaestroLink] part start song={song.SongId} T={T} P={P} now={now} startPos={startPos}ms" +
+        _services.Log.Info($"[MaestroLink] part start song={song.SongId} T={T} P={P} now={now} clk={LinkClockLabel()} startPos={startPos}ms" +
                            (startPos > P ? " (LATE JOIN)" : $" (count-in {T + P - now}ms)"));
     }
 }

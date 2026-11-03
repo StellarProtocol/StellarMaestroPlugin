@@ -133,7 +133,7 @@ public sealed partial class Plugin
     private int LinkCountInSec()
     {
         var s = _lkRoomSong;
-        long now = _services.CombatSnapshot.ServerNowMs;
+        long now = LinkServerNowMs();
         if (s == null || _lkPaused || now <= 0 || now >= LinkStartInstant(s)) return 0;
         return (int)Math.Ceiling((LinkStartInstant(s) - now) / 1000.0);
     }

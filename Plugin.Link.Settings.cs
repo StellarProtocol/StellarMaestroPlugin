@@ -99,7 +99,7 @@ public sealed partial class Plugin
         if (LinkEquipBusy) return "equipping";
         if (_lkStoppedByPlayer) return "stopped_by_player";
         if (_lkPartActive)
-            return _lkRoomSong != null && _services.CombatSnapshot.ServerNowMs < LinkStartInstant(_lkRoomSong) ? "countin" : "playing";
+            return _lkRoomSong != null && LinkServerNowMs() < LinkStartInstant(_lkRoomSong) ? "countin" : "playing";
         if (_lkPaused) return "idle";   // paused = idle with songId + the paused position
         var s = _lkRoomSong ?? _lkPrepSong;
         if (s == null || s.StemUrl == null) return "idle";   // resting = idle with songId set
@@ -117,7 +117,7 @@ public sealed partial class Plugin
         var s = _lkRoomSong;
         if (s == null) return 0;
         if (_lkPaused) return Math.Clamp(_lkPausedPosMs, 0, Math.Max(0, s.DurationMs));
-        long now = _services.CombatSnapshot.ServerNowMs;
+        long now = LinkServerNowMs();
         if (now <= 0) return s.StartPositionMs;
         return (int)Math.Clamp(Math.Max(now - s.StartAtServerMs, s.StartPositionMs), 0, Math.Max(0, s.DurationMs));
     }

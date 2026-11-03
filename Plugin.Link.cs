@@ -12,15 +12,17 @@ namespace Stellar.Maestro;
 // ensemble (KB Band-Instrument-Playback.md → "Band sync WITHOUT the game ensemble", measured 0 ms per-note delta).
 //
 // Threads: LinkClient owns the socket on a background task and only queues events; EVERYTHING here (Lua, player,
-// config, UI state) runs on the main thread in LinkTick. Server time is always CombatSnapshot.ServerNowMs — never
-// reflect ZServerTime (Server-Clock-and-Ping-HUD.md: stalls the ping HUD + freezes day/night).
+// config, UI state) runs on the main thread in LinkTick. Server time is the GAME's server clock (Lua Z.ServerTime) via
+// LinkServerNowMs() (Plugin.Link.Clock.cs), NOT raw CombatSnapshot.ServerNowMs — that is the PC clock (Server-Clock-and-
+// Ping-HUD.md: a slow PC sent every note late). Never reflect ZServerTime from C# (stalls the ping HUD + freezes day/night).
 //
 // Linked settings are in-memory overrides on the MidiPlayer only (Plugin.Link.Settings.cs ApplyLinkPlayerSettings); the
 // player's saved config / Plugin fields are never written, and Disconnect restores them (RestoreLocalPlayerSettings).
 //
 // Partials: Plugin.Link.cs (session + status) · Plugin.Link.Song.cs (prepare/play/stop, part lifecycle) ·
 //           Plugin.Link.Settings.cs (linked overrides + status helpers) ·
-//           Plugin.Link.Equip.cs (re-equip recipe) · Plugin.Link.Ui.cs (join form + status view).
+//           Plugin.Link.Equip.cs (re-equip recipe) · Plugin.Link.Ui.cs (join form + status view) ·
+//           Plugin.Link.Clock.cs (game server clock).
 public sealed partial class Plugin
 {
     private enum LinkPhase { Off, Connecting, Linked }
@@ -213,6 +215,7 @@ public sealed partial class Plugin
             if (_lk == null) return;
             DrainStemResults();
             LinkEquipTick();
+            if (IsLinked) LinkClockTick(dt);   // before the part tick: it reads the clock
             LinkPartTick(dt);
 
             if (!IsLinked) return;
@@ -303,6 +306,7 @@ public sealed partial class Plugin
         _lkPlayerId    = LinkSettings.Str(m, "playerId") ?? "";
         _lkClientToken = LinkSettings.Str(m, "clientToken") ?? "";
         _lkLastStatus  = "";   // force a status right away
+        RefreshLinkClock();    // before the welcome song (late-join math) and the first status
 
         if (first)
         {
@@ -364,7 +368,7 @@ public sealed partial class Plugin
         if (!_lkBandViewOpen) _lkWarnings.Add("band_view_closed");
         if (_lkInstId == 0) _lkWarnings.Add("no_instrument");
         if (!_bandPlayer.PreBufferedNet) _lkWarnings.Add("not_buffered");
-        if (_services.CombatSnapshot.ServerNowMs <= 0) _lkWarnings.Add("not_synced");
+        if (LinkServerNowMs() <= 0) _lkWarnings.Add("not_synced");
     }
 
     // Everything except serverNowMs/positionMs — compared each frame to send a status "immediately on any state change".
@@ -389,7 +393,7 @@ public sealed partial class Plugin
     private void SendStatus(string core)
     {
         if (_lk == null || !_lkOnline) return;
-        long now = _services.CombatSnapshot.ServerNowMs;
+        long now = LinkServerNowMs();
         // Splice the volatile fields in front of the cached core (core is a JSON object: "{...}").
         string head = "{\"t\":\"status\",\"serverNowMs\":" + Math.Max(0, now) + ",\"positionMs\":" + LinkPositionMs() + ",";
         _lk.Send(head + core.Substring(1));

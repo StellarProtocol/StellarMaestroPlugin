@@ -70,14 +70,7 @@ public sealed partial class MidiPlayer : IDisposable
             if (_forceSustain == value) return;
             _forceSustain = value;
             if (!_playing) return;                 // otherwise applied at Start
-            if (_netMode)
-            {
-                _pedalDown = value;
-                FlushPedalB2(value);          // local: set the pedal now (local-only)
-                SendPedalImmediateB2(value);  // network: SustainPedal down(1)/up(0) at the current position, for listeners
-                _b2ForcePedalSent = true;     // the SendBatchB2 start-down one-shot is now covered by this live send
-                return;
-            }
+            if (_netMode) { LiveForceSustainB2(value); return; }   // MidiPlayer.Link.cs: ON = down, OFF = the SONG's pedal state
             if (value) { FlushPedalB1(true); _pedalDown = true; }        // engage now
             else if (_pedalDown) { FlushPedalB1(false); _pedalDown = false; }  // release the held pedal
         }
@@ -90,6 +83,7 @@ public sealed partial class MidiPlayer : IDisposable
 
     public void Load(MidiSong song)
     {
+        DiagEnd("switch");   // dev diag END row (no-op unless active and a song was playing/paused)
         Stop();
         _song = song;
         _startAtFrac = -1;
@@ -100,6 +94,7 @@ public sealed partial class MidiPlayer : IDisposable
     public void Start(int transpose)
     {
         if (_song == null) return;
+        DiagEnd("switch");
         Stop();
         _transpose = transpose;
         _elapsedMs = 0;
@@ -163,6 +158,7 @@ public sealed partial class MidiPlayer : IDisposable
     // Stop and reset to the beginning (the Stop button). Pause/Resume keep the position; this clears it.
     public void StopReset()
     {
+        DiagEnd("stop");
         Stop();
         _completed   = false;
         _elapsedMs   = 0;
@@ -171,7 +167,7 @@ public sealed partial class MidiPlayer : IDisposable
     }
 
     // Natural end of song → stop and latch a completion the playlist controller can consume to auto-advance.
-    private void EndReached() { Stop(); _completed = true; }
+    private void EndReached() { DiagEnd("finished"); Stop(); _completed = true; }
 
     // Returns true once after a song finished on its own (not a user Stop/Pause), clearing the latch.
     public bool ConsumeCompleted() { if (!_completed) return false; _completed = false; return true; }
@@ -181,6 +177,7 @@ public sealed partial class MidiPlayer : IDisposable
     public void Pause()
     {
         if (!_playing) return;
+        DiagEnd("pause");
         if (_netMode) ReleaseAllHeldB2(); else ReleaseAllHeld();
         _held.Clear();
         _heldOrder.Clear();
@@ -244,6 +241,7 @@ public sealed partial class MidiPlayer : IDisposable
             _playIdx = 0; while (_playIdx < _timeline.Count && _timeline[_playIdx].RealMs < targetMs) _playIdx++;
             _sendIdx = _playIdx;
             _b2Held.Clear();
+            ResetLinkCursors();   // a normal seek starts fresh (no floors / orphan skips)
             int n = 0; for (int i = 0; i < _playIdx; i++) if (_timeline[i].Type == CmdType.Press) n++;
             _sentNotes = n;
         }
@@ -267,6 +265,9 @@ public sealed partial class MidiPlayer : IDisposable
     // Anchor the running clock (and, in buffered mode, the network base) to the current position.
     private void AnchorClock()
     {
+        // Linked (Maestro Link): the base is the room's shared T — re-anchoring it to the LOCAL server clock here is
+        // exactly what breaks band sync. The linked UI exposes no seek/resume, so this is a guard, not a path.
+        if (KeepBase && _netMode) return;
         if (_netMode)
         {
             _b2ClockOffset = _realMs - _clock.Elapsed.TotalMilliseconds;
@@ -292,6 +293,7 @@ public sealed partial class MidiPlayer : IDisposable
     // The ~lookahead of already-sent notes plays out on remotes at the old settings; the rest switches over.
     private void RebuildAndReseek()
     {
+        if (KeepBase) { RebuildKeepBase(); return; }   // linked: rebuild from the current position, base T untouched
         double frac = _b2DurationMs > 0 ? _realMs / _b2DurationMs : 0.0;
         ReleaseAllHeldB2();
         BuildTimeline();                                   // uses current _transpose / _holdOffsetMs / _speed

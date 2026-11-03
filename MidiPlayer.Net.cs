@@ -25,8 +25,18 @@ public sealed partial class MidiPlayer
 
     // Live network tuning (exposed via the Network Settings window).
     public int NetLookaheadMs { get => (int)_lookaheadMs;    set => _lookaheadMs    = Math.Clamp(value, 100, 1500); }
-    public int NetBatchMs     { get => (int)_sendIntervalMs; set => _sendIntervalMs = Math.Clamp(value, 16, 250); }
+    // 100–400: below 100 ms fast same-pitch repeats arrive with correct playTimes yet play late / out of order / stuck at
+    // the listener (batch 33 broke, 66 mostly OK, 100+ clean — sweep 2026-11-02, Band-Instrument-Playback.md).
+    public int NetBatchMs     { get => (int)_sendIntervalMs; set => _sendIntervalMs = Math.Clamp(value, 100, 400); }
     public int ToneLeadMs     { get => (int)_toneLeadMs;     set => _toneLeadMs     = Math.Clamp(value, 0, 500); }
+
+    // The lookahead the send loop ACTUALLY uses. Each send covers up to now + lookahead and the next one fires ~one batch
+    // interval later (rounded up to a frame), so a record is sent only (lookahead − interval, lookahead] ms before it plays.
+    // A batch ≥ lookahead (e.g. 400 vs 100) would therefore send notes AFTER their playTime → late/dropped at the listener.
+    // Floor it at batch + a 100 ms margin (frame quantisation + hitches + transit) without touching the user's saved value.
+    private const double SendLeadMarginMs = 100.0;
+    private double EffLookaheadMs => Math.Max(_lookaheadMs, _sendIntervalMs + SendLeadMarginMs);
+    public int EffectiveLookaheadMs => (int)EffLookaheadMs;
 
     private enum CmdType : byte { Release = 0, PedalOff = 1, PedalOn = 2, Press = 3 } // value = same-time ordering
 
@@ -46,11 +56,34 @@ public sealed partial class MidiPlayer
     {
         public readonly long PlayTime; public readonly B2Rank Rank; public readonly int Seq;
         public readonly string? Frag; public readonly int ToneCat, TechKind;
-        public B2Item(long playTime, B2Rank rank, int seq, string frag)
-        { PlayTime = playTime; Rank = rank; Seq = seq; Frag = frag; ToneCat = 0; TechKind = 0; }
+#if DEBUG
+        public readonly int Sync, Param; public readonly bool Release;   // what Frag encodes — dev diag SEND rows only (MidiPlayer.Diag.cs)
+#endif
+        // sync/param/release only feed the DEBUG diag fields; Release builds take and drop them (call sites stay unconditional).
+        public B2Item(long playTime, B2Rank rank, int seq, string frag, int sync, int param, bool release = false)
+        {
+            PlayTime = playTime; Rank = rank; Seq = seq; Frag = frag; ToneCat = 0; TechKind = 0;
+#if DEBUG
+            Sync = sync; Param = param; Release = release;
+#endif
+        }
         public B2Item(long playTime, int seq, int toneCat, int techKind)
-        { PlayTime = playTime; Rank = B2Rank.Tone; Seq = seq; Frag = null; ToneCat = toneCat; TechKind = techKind; }
+        {
+            PlayTime = playTime; Rank = B2Rank.Tone; Seq = seq; Frag = null; ToneCat = toneCat; TechKind = techKind;
+#if DEBUG
+            Sync = SyncTone; Param = -1; Release = false;
+#endif
+        }
     }
+
+    // Record syncType codes (EInstrumentSyncType, dump.cs 697783 / pb_enum_define.lua:158) — B2Item's diag fields.
+    private const int SyncNote = 0, SyncTechnique = 1, SyncTone = 2, SyncPedal = 3;
+
+    // Dev diagnostics hooks (SEND/END rows), implemented in MidiPlayer.Diag.cs, which compiles in DEBUG builds only
+    // (csproj). Without an implementation the compiler removes the calls, arguments included.
+    partial void DiagSendBatch(List<B2Item> batch);
+    partial void DiagSendRecs(string recs);
+    partial void DiagEnd(string reason);
     private readonly List<B2Item> _batch = new();   // reusable scratch for the merged batch
 
     private bool   _netMode;                     // false = B1 (view sync), true = B2 (pre-buffered)
@@ -60,6 +93,8 @@ public sealed partial class MidiPlayer
     private int    _playIdx, _sendIdx;           // separate cursors into the timeline (send runs ahead of play)
     private double _sendAccumMs;
     private bool   _b2ForcePedalSent;            // force-sustain: the one-shot SustainPedal DOWN has been sent this play
+    private long   _b2ForcePedalAtMs;            // ...stamped HERE: the start position (0, or the late-join / seek position)
+    private bool   _netPedalDown;                // the sustain pedal as SENT to listeners (last pedal record queued), not the local state
     private const long B2RebuildDebounceMs = 200; // settle time before rebuilding after a live transpose/hold/tempo change
     private double _restrikeGapMs;                // ms to release a restruck note BEFORE the re-press; 0 = off (release exactly at re-press)
     public int RestrikeGapMs { get => (int)_restrikeGapMs; set { _restrikeGapMs = Math.Clamp(value, 0, 100); MarkB2Dirty(); } }   // live in buffered mode
@@ -119,8 +154,11 @@ public sealed partial class MidiPlayer
         _sendIdx       = 0;
         _sendAccumMs   = _sendIntervalMs;   // send the first lookahead batch on frame one
         _b2ForcePedalSent = false;
+        _b2ForcePedalAtMs = 0;
+        _netPedalDown     = false;
         _b2Dirty       = false;
         _b2Held.Clear();
+        ResetLinkCursors();   // floors / orphan-release skips / network-open tracking (MidiPlayer.Link.cs)
         BuildTimeline();
         DefineKeyVizHelpers();
         if (EnsembleGrid && EnsembleBaseMs > 0)
@@ -275,6 +313,7 @@ public sealed partial class MidiPlayer
                     _sentNotes++;
                     break;
                 case CmdType.Release:
+                    if (ConsumeSkip(_skipRelLocal, c.Key)) break;   // orphan: its press was skipped (late join / keep-base rebuild)
                     if (!_muteLocal) { _sb.Append("svc:EntityInstrumentReleaseNote(ent,").Append(c.Key).Append(",true) "); _b2Held.Remove(c.Key); }
                     if (_showKeyViz)  _sb.Append("__mvr(").Append(c.Key).Append(") ");
                     if (!_muteLocal || _showKeyViz) noteEmitted++;
@@ -311,14 +350,6 @@ public sealed partial class MidiPlayer
     // Apply the pedal for the current mode: B2 = local-only (network rides the sync records); B1 = local + network via the game path.
     private void ApplyPedal(bool on) { if (_netMode) FlushPedalB2(on); else FlushPedalB1(on); }
 
-    // Send a single SustainPedal record to listeners at the CURRENT position (for a live mid-song force-sustain toggle).
-    private void SendPedalImmediateB2(bool down)
-        => _services.Lua.DoString("pcall(function() Z.CoroUtil.create_coro_xpcall(function() " +
-            "local vm=Z.VMMgr.GetVM('band') local tok=Z.DataMgr.Get('band_data').CancelSource:CreateToken() " +
-            "vm:AsyncSendInstrumentSyncData({{syncType=E.EInstrumentSyncType.SustainPedal,playTime=__b2base+" +
-            (long)System.Math.Round(_realMs) + ",playParam=" + (down ? 1 : 0) +
-            ",playType=E.EInstrumentPlayType.Press,expectedSyncTime=0}}, tok) end)() end)");
-
     private void SendBatchB2()
     {
         // Collect this tick's newly-due records — notes, song pedal events, AND tone/technique program-change boundaries
@@ -331,37 +362,43 @@ public sealed partial class MidiPlayer
         _batch.Clear();
         int seq = 0;
 
-        // Force sustain: hold the pedal DOWN for the whole song — one SustainPedal down at song start (playTime 0), never
-        // an up, and skip the song's own pedal records below. Ranked Pedal so a t=0 tone (none reaches here — seek
-        // already sent it) would still precede it; nothing else sits at t=0.
+        // Force sustain: hold the pedal DOWN for the whole song — one SustainPedal down at the START POSITION (0, or the
+        // late-join / seek position — never stamped in the past), never an up, and skip the song's own pedal records
+        // below. Ranked Pedal so a tone at the same stamp still precedes it.
         if (_forceSustain && !_b2ForcePedalSent)
         {
             _b2ForcePedalSent = true;
-            _batch.Add(new B2Item(0, B2Rank.Pedal, seq++,
-                "{syncType=E.EInstrumentSyncType.SustainPedal,playTime=__b2base+0,playParam=1,playType=E.EInstrumentPlayType.Press,expectedSyncTime=0}"));
+            _netPedalDown = true;
+            _batch.Add(new B2Item(_b2ForcePedalAtMs, B2Rank.Pedal, seq++,
+                "{syncType=E.EInstrumentSyncType.SustainPedal,playTime=__b2base+" + _b2ForcePedalAtMs +
+                ",playParam=1,playType=E.EInstrumentPlayType.Press,expectedSyncTime=0}", SyncPedal, 1));
         }
 
         // Notes + song pedal events from the timeline (playType=Press always for pedal; up/down carried by playParam).
-        while (_sendIdx < _timeline.Count && _timeline[_sendIdx].RealMs <= _realMs + _lookaheadMs)
+        while (_sendIdx < _timeline.Count && _timeline[_sendIdx].RealMs <= _realMs + EffLookaheadMs)
         {
             var c = _timeline[_sendIdx++];
             long pt = (long)Math.Round(c.RealMs);
             if (c.Type == CmdType.PedalOn || c.Type == CmdType.PedalOff)
             {
                 if (_forceSustain) continue;   // force-sustain: song's pedal events are skipped (one-shot down above covers it)
+                _netPedalDown = c.Type == CmdType.PedalOn;   // timeline order → the last one queued is the sent state
                 _batch.Add(new B2Item(pt, B2Rank.Pedal, seq++,
                     "{syncType=E.EInstrumentSyncType.SustainPedal,playTime=__b2base+" + pt +
                     ",playParam=" + (c.Type == CmdType.PedalOn ? 1 : 0) +
-                    ",playType=E.EInstrumentPlayType.Press,expectedSyncTime=0}"));
+                    ",playType=E.EInstrumentPlayType.Press,expectedSyncTime=0}", SyncPedal, c.Type == CmdType.PedalOn ? 1 : 0));
                 continue;
             }
             if (c.Type != CmdType.Press && c.Type != CmdType.Release) continue;
+            if (c.Type == CmdType.Release && ConsumeSkip(_skipRelSend, c.Key)) continue;   // orphan release — press never sent
+            TrackNetSent(c.Key, c.Type == CmdType.Press);
             _batch.Add(new B2Item(pt, B2Rank.Note, seq++,
                 "{syncType=E.EInstrumentSyncType.Note,playTime=__b2base+" + pt +
                 ",playParam=" + c.Key +
                 ",playType=E.EInstrumentPlayType." + (c.Type == CmdType.Press ? "Press" : "Release") +
-                ",expectedSyncTime=0}"));
+                ",expectedSyncTime=0}", SyncNote, c.Key, c.Type == CmdType.Release));
         }
+        _sendHorizonMs = Math.Max(_sendHorizonMs, _realMs + EffLookaheadMs);   // everything up to here is sent (keep-base rebuild boundary)
 
         // Tone/technique program-change boundaries due in the SAME window (advances _effSendCur — this is now the ONLY
         // network emitter for continuous boundaries; TickInstrumentEffect only applies them locally). timbre/kind resolve
@@ -370,7 +407,7 @@ public sealed partial class MidiPlayer
         bool hasTone = false;
         long toneLead = (long)Math.Round(_toneLeadMs);
         if (pcs != null)
-            while (_effSendCur < pcs.Count && pcs[_effSendCur].ms <= _realMs + _lookaheadMs)
+            while (_effSendCur < pcs.Count && pcs[_effSendCur].ms <= _realMs + EffLookaheadMs)
             {
                 var (tc, tk) = EffectAt(pcs[_effSendCur].program);
                 // Give the tone/technique event-swap a real-time LEAD: stamp the setup record's playTime toneLeadMs
@@ -400,6 +437,8 @@ public sealed partial class MidiPlayer
             c = ((byte)a.Rank).CompareTo((byte)b.Rank);
             return c != 0 ? c : a.Seq.CompareTo(b.Seq);
         });
+
+        DiagSendBatch(_batch);   // dev-only SEND rows (no-op unless the diag folder is present)
 
         _payload.Clear();
         foreach (var it in _batch)

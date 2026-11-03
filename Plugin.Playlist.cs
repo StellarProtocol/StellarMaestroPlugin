@@ -158,6 +158,7 @@ public sealed partial class Plugin
         ApplyEnsembleGrid(song.Bpm);   // if syncing: anchor base + count-in + tempo-scale to the ensemble; else normal
         _bandPlayer.Load(song);
         _bandPlayer.Start(_bandTranspose);
+        LinkDiagPlainStart(songs[i]);   // dev-only START/CFG rows (no-op unless the diag folder is present)
 
         _nowPlaying = i; _queueSel = i;
         string pedal = song.PedalCount > 0 ? $", pedal x{song.PedalCount}" : "";
@@ -213,6 +214,7 @@ public sealed partial class Plugin
             if (_gapRemainMs <= 0) { _gapRemainMs = -1; AdvanceAfterGap(); }
             return;
         }
+        if (_lkPhase != LinkPhase.Off) return;   // linked: the ROOM runs the queue (Plugin.Link.Song.cs owns the player)
         if (!_bandPlayer.ConsumeCompleted()) return;
         if (_loopMode != 2 && !_autoAdvance) return;   // stop at end (not looping-one, not auto-advancing)
         if (_gapSec > 0) { _gapRemainMs = _gapSec * 1000.0; _bandMidiStatus = $"next in {_gapSec}s…"; return; }

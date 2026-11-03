@@ -34,7 +34,10 @@ public sealed partial class Plugin : IStellarPlugin
         _bandTempoPct     = _cfg.Get<int> ("tempo_pct",      100);
         _bandMaxPoly      = _cfg.Get<int> ("max_poly",       0);
         _bandNetPrebuffer = _cfg.Get<bool>("net_prebuffer",  true);
-        _bandRestrikeGapMs = _cfg.Get<int> ("restrike_gap_ms", 16);   // default on: separates back-to-back same-pitch notes so they don't drop at the listener
+        _bandRestrikeGapMs = _cfg.Get<int> ("restrike_gap_ms", 33);   // default on: separates back-to-back same-pitch notes so they don't drop at the listener.
+        // 33, not 16: the release and the next same-pitch press must land in DIFFERENT receiver frames — within one frame the
+        // listener runs the press first and the release kills the new note. 16 ms clears a 60 fps listener only; a 30 fps one
+        // (33 ms frames) still silences the repeat (sweep 2026-11-02, Band-Instrument-Playback.md).
         _bandMuteLocal     = _cfg.Get<bool>("mute_local",      false);
         _bandShowKeyViz    = _cfg.Get<bool>("show_keyviz",     true);
         _bandApplyTone     = _cfg.Get<bool>("apply_tone",      false);
@@ -65,14 +68,16 @@ public sealed partial class Plugin : IStellarPlugin
         _libraryWindow  = RegisterWindow("maestro.library",  _loc.T("mst.win.library"),  4, BuildLibraryRoot());
         _previewWindow  = RegisterWindow("maestro.preview",  _loc.T("mst.win.preview"),  5, BuildPreviewRoot());
         _tipWindow      = RegisterTipWindow();
-        var window = RegisterWindow("maestro.main", _loc.T("mst.title"), 0, BuildBandRoot());
+        _linkWindow     = RegisterWindow("maestro.link",     _loc.T("mst.win.link"),     2, BuildLinkRoot(), 420f);
+        var window = _mainWindow = RegisterWindow("maestro.main", _loc.T("mst.title"), 0, BuildBandRoot());
         // Title stays the fixed literal "Maestro" — the stable pin-identity key (ILauncher.cs:49-50) —
         // so a pinned tile survives a language change; TitleProvider carries the live-localized display.
         _launchers.Add(_services.Launcher.Register(new LauncherEntry(
             Title:   "Maestro",
             IconPng: LoadIconPng(),
             IconKey: null,
-            OnOpen:  () => { RescanMidiFolder(); window.SetVisible(true); })   // rescan the midi/ folder each open
+            // While linked, Maestro opens as the Link status view (it replaces the main window — Plugin.Link.Ui.cs).
+            OnOpen:  () => { if (IsLinked) { _linkWindow.SetVisible(true); return; } RescanMidiFolder(); window.SetVisible(true); })   // rescan the midi/ folder each open
         { Group = LauncherGroup.Plugin,
           // Re-localize the tile DISPLAY on a language change; Title above never changes (pin identity).
           TitleProvider = () => _loc.T("mst.title"),
@@ -81,12 +86,23 @@ public sealed partial class Plugin : IStellarPlugin
 
         _services.Framework.Update += PlaylistTick;   // auto-advance the queue when a song finishes
 
-        // STEP-0 spike: capture InstrumentService to read the ensemble grid from C#.
+        // Capture InstrumentService (its Tick) so the ensemble grid (Sync to ensemble) and the Link instrument check can read it.
         try { EnsemblePatch.Install(_services.Harmony.Create("ensemble"), m => _services.Log.Info(m)); }
         catch (Exception ex) { _services.Log.Warning($"[Maestro] ensemble patch install failed: {ex.Message}"); }
 
+        InitLink();        // Maestro Link (website-run band room) — Plugin.Link*.cs
+        InitLinkDiag();    // dev-only sync diagnostics, DEBUG builds only — dormant unless its folder exists (Plugin.LinkDiag.cs)
+
         _services.Log.Info("[Maestro] constructed");
     }
+
+    // Dev diagnostics hooks, implemented in Plugin.LinkDiag.cs / Plugin.SweepCmd.cs, which compile in DEBUG builds only
+    // (csproj). Without an implementation the compiler removes these calls, arguments included — so keep the arguments
+    // plain values (no diag-only types) or a Release build won't bind them.
+    partial void InitLinkDiag();
+    partial void DisposeLinkDiag();
+    partial void LinkDiagLinkStart(long now, string songId, long songStartMs, int startPos);   // Link part START/CFG rows
+    partial void LinkDiagPlainStart(string entry);                                             // plain-playback START/CFG rows
 
     // Registers a hidden, draggable menu window (no launcher tile of its own — the launcher entry opens it).
     private IWindowControl RegisterWindow(string id, string title, int index, HudElement root, float width = 460f)
@@ -125,6 +141,8 @@ public sealed partial class Plugin : IStellarPlugin
     public void Dispose()
     {
         try { _services.Framework.Update -= PlaylistTick; } catch { }
+        DisposeLink();
+        DisposeLinkDiag();
         try { _rateScope?.Dispose(); } catch { }
         try { _previewSynth.Dispose(); } catch { }
         try { EnsemblePatch.Uninstall(); } catch { }

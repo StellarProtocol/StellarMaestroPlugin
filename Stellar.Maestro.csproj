@@ -9,10 +9,21 @@
     <NoWarn>CS8632;CS8765</NoWarn>
     <RootNamespace>Stellar.Maestro</RootNamespace>
     <AssemblyName>Stellar.Maestro</AssemblyName>
-    <Version>2.3.0</Version>
+    <Version>2.4.0</Version>
     <Deterministic>true</Deterministic>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
   </PropertyGroup>
+
+  <!-- Developer note-timing / sync diagnostics (Band-Instrument-Playback.md, "sweep"): DEBUG builds only. They poll a
+       file-command channel in the world-writable C:\Users\Public\maestro-link-spike\ folder, so a release must not
+       contain them. Their call sites are C# partial methods (declared in Plugin.cs / MidiPlayer.Net.cs), which the
+       compiler drops, arguments and all, when no implementation is compiled. tools/link-spike/ is never compiled or packed. -->
+  <ItemGroup Condition="'$(Configuration)' != 'Debug'">
+    <Compile Remove="LinkSpikeDiagPatch.cs" />
+    <Compile Remove="MidiPlayer.Diag.cs" />
+    <Compile Remove="Plugin.LinkDiag.cs" />
+    <Compile Remove="Plugin.SweepCmd.cs" />
+  </ItemGroup>
 
   <ItemGroup>
     <!-- i18n P2: consumes IPluginServices.Localization (framework 2.1.0). -->

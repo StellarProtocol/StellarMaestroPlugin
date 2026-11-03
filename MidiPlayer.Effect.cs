@@ -147,10 +147,12 @@ public sealed partial class MidiPlayer
             ? "{syncType=E.EInstrumentSyncType.Tone,playTime=__b2base+" + led + ",playParam=timbre-1000000,playType=E.EInstrumentPlayType.Press,expectedSyncTime=0}," +
               "{syncType=E.EInstrumentSyncType.Tone,playTime=__b2base+" + led + ",playParam=timbre,playType=E.EInstrumentPlayType.Press,expectedSyncTime=0},"
             : "{syncType=E.EInstrumentSyncType.Tone,playTime=__b2base+" + led + ",playParam=timbre,playType=E.EInstrumentPlayType.Press,expectedSyncTime=0},";
+        string recs = toneRecs +
+            "{syncType=E.EInstrumentSyncType.Technique,playTime=__b2base+" + led + ",playParam=kind,playType=E.EInstrumentPlayType.Press,expectedSyncTime=0}";
+        DiagSendRecs(recs);   // dev-only SEND rows (no-op unless the diag folder is present)
         _services.Lua.DoString("pcall(function() " + RESOLVE + Pick(toneCat, techKind) +
             "local vm=Z.VMMgr.GetVM('band') local tok=(v.cancelSource or Z.DataMgr.Get('band_data').CancelSource):CreateToken() " +
-            "local recs={" + toneRecs +
-            "{syncType=E.EInstrumentSyncType.Technique,playTime=__b2base+" + led + ",playParam=kind,playType=E.EInstrumentPlayType.Press,expectedSyncTime=0}} " +
+            "local recs={" + recs + "} " +
             "Z.CoroUtil.create_coro_xpcall(function() vm:AsyncSendInstrumentSyncData(recs, tok) end)() end)");
     }
 }

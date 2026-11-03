@@ -56,12 +56,34 @@ public sealed partial class MidiPlayer
     {
         public readonly long PlayTime; public readonly B2Rank Rank; public readonly int Seq;
         public readonly string? Frag; public readonly int ToneCat, TechKind;
+#if DEBUG
         public readonly int Sync, Param; public readonly bool Release;   // what Frag encodes — dev diag SEND rows only (MidiPlayer.Diag.cs)
+#endif
+        // sync/param/release only feed the DEBUG diag fields; Release builds take and drop them (call sites stay unconditional).
         public B2Item(long playTime, B2Rank rank, int seq, string frag, int sync, int param, bool release = false)
-        { PlayTime = playTime; Rank = rank; Seq = seq; Frag = frag; ToneCat = 0; TechKind = 0; Sync = sync; Param = param; Release = release; }
+        {
+            PlayTime = playTime; Rank = rank; Seq = seq; Frag = frag; ToneCat = 0; TechKind = 0;
+#if DEBUG
+            Sync = sync; Param = param; Release = release;
+#endif
+        }
         public B2Item(long playTime, int seq, int toneCat, int techKind)
-        { PlayTime = playTime; Rank = B2Rank.Tone; Seq = seq; Frag = null; ToneCat = toneCat; TechKind = techKind; Sync = SyncTone; Param = -1; Release = false; }
+        {
+            PlayTime = playTime; Rank = B2Rank.Tone; Seq = seq; Frag = null; ToneCat = toneCat; TechKind = techKind;
+#if DEBUG
+            Sync = SyncTone; Param = -1; Release = false;
+#endif
+        }
     }
+
+    // Record syncType codes (EInstrumentSyncType, dump.cs 697783 / pb_enum_define.lua:158) — B2Item's diag fields.
+    private const int SyncNote = 0, SyncTechnique = 1, SyncTone = 2, SyncPedal = 3;
+
+    // Dev diagnostics hooks (SEND/END rows), implemented in MidiPlayer.Diag.cs, which compiles in DEBUG builds only
+    // (csproj). Without an implementation the compiler removes the calls, arguments included.
+    partial void DiagSendBatch(List<B2Item> batch);
+    partial void DiagSendRecs(string recs);
+    partial void DiagEnd(string reason);
     private readonly List<B2Item> _batch = new();   // reusable scratch for the merged batch
 
     private bool   _netMode;                     // false = B1 (view sync), true = B2 (pre-buffered)

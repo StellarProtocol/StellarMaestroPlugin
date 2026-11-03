@@ -5,6 +5,8 @@ using System.Text.RegularExpressions;
 
 namespace Stellar.Maestro;
 
+// DEBUG BUILDS ONLY — the csproj removes this file from non-Debug builds; MidiPlayer reaches it through partial methods
+// declared in MidiPlayer.Net.cs (calls vanish in Release).
 // DEV-ONLY note-accuracy diagnostics for the player (dormant unless the maestro-link-spike folder exists — the rows go
 // through LinkSpikeDiagPatch.Row, which is a no-op until Plugin.LinkDiag.cs binds the diag-<name>.tsv file).
 //   SEND\t{serverNow}\t{syncType}\t{playType}\t{playParam}\t{playTime}\t{localMs}  — every buffered (B2) record we send, AFTER the
@@ -17,15 +19,14 @@ namespace Stellar.Maestro;
 // Every row ends with localMs = LinkSpikeDiagPatch.LocalMs (never-resyncing local Stopwatch, ms, 0.1 ms resolution).
 public sealed partial class MidiPlayer
 {
-    private const int SyncNote = 0, SyncTechnique = 1, SyncTone = 2, SyncPedal = 3;
-    private const int PlayPress = 1, PlayRelease = 2;
+    private const int PlayPress = 1, PlayRelease = 2;   // (Sync* codes live in MidiPlayer.Net.cs — B2Item uses them)
 
     // Current __b2base, or 0 if unreadable. One Lua read — only ever called while the diag is on.
     private long DiagBase()
         => _services.Lua.TryReadGlobalNumber("__b2base", out double b) ? (long)b : 0;
 
     // SEND rows for one sorted B2 batch (called from SendBatchB2 just before the send).
-    private void DiagSendBatch(List<B2Item> batch)
+    partial void DiagSendBatch(List<B2Item> batch)
     {
         if (!LinkSpikeDiagPatch.On) return;
         try
@@ -53,7 +54,7 @@ public sealed partial class MidiPlayer
         @"syncType=E\.EInstrumentSyncType\.(\w+),playTime=__b2base\+(-?\d+),playParam=([^,]+),playType=E\.EInstrumentPlayType\.(\w+)",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
-    private void DiagSendRecs(string recs)
+    partial void DiagSendRecs(string recs)
     {
         if (!LinkSpikeDiagPatch.On) return;
         try
@@ -77,7 +78,7 @@ public sealed partial class MidiPlayer
              .Append(param).Append('\t').Append(playTime).Append('\t').Append(LinkSpikeDiagPatch.LocalMs).Append('\n');
 
     // END row — only when a song was actually playing or paused (Start/Load call Stop() on an idle player too).
-    private void DiagEnd(string reason)
+    partial void DiagEnd(string reason)
     {
         if (!LinkSpikeDiagPatch.On || (!_playing && !_paused)) return;
         try { LinkSpikeDiagPatch.Row($"END\t{_services.CombatSnapshot.ServerNowMs}\t{reason}\t{LinkSpikeDiagPatch.LocalMs}"); } catch { }

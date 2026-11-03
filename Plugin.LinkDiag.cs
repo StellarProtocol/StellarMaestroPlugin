@@ -5,7 +5,9 @@ using Stellar.Abstractions.Services;
 namespace Stellar.Maestro;
 
 // MAESTRO LINK — dev-only sync diagnostics (left over from the 2026-10-28 spike that proved shared-T band sync).
-// Fully DORMANT unless C:\Users\Public\maestro-link-spike\ exists (probed every 2 s; activation lazily installs the
+// DEBUG BUILDS ONLY: the csproj removes this file (and LinkSpikeDiagPatch.cs, MidiPlayer.Diag.cs, Plugin.SweepCmd.cs)
+// from non-Debug builds; the callers reach it through partial methods declared in Plugin.cs, so they vanish in Release.
+// Even in Debug it is fully DORMANT unless C:\Users\Public\maestro-link-spike\ exists (probed every 2 s; activation lazily installs the
 // read-only LinkSpikeDiagPatch). No UI, no user-facing strings — log lines + one file:
 //   diag-<CharacterName>.tsv → PLAY/REL/RECV rows (what each listener heard, stamped with ServerNowMs) + START rows when a
 //                               Link part starts; flushed ~1 Hz. Diff two clients' files to measure per-note band delta.
@@ -23,9 +25,9 @@ public sealed partial class Plugin
     private double _ldFlushAccumMs;
     private string _ldName = "";
 
-    private void InitLinkDiag() => _services.Framework.Update += LinkDiagTick;
+    partial void InitLinkDiag() => _services.Framework.Update += LinkDiagTick;
 
-    private void DisposeLinkDiag()
+    partial void DisposeLinkDiag()
     {
         try { _services.Framework.Update -= LinkDiagTick; } catch { }
         try { LinkSpikeDiagPatch.Flush(); LinkSpikeDiagPatch.Reset(); } catch { }
@@ -33,6 +35,13 @@ public sealed partial class Plugin
 
     // Row marker for the diag file (no-op unless active + a log file is bound).
     private static void LinkDiagRow(string line) => LinkSpikeDiagPatch.Row(line);
+
+    // Link part start (Plugin.Link.Song.cs TryStartLinkedPart): START\t{serverNow}\t{songId}\t{T}\t{startPos}, then CFG.
+    partial void LinkDiagLinkStart(long now, string songId, long songStartMs, int startPos)
+    {
+        LinkDiagRow($"START\t{now}\t{songId}\t{songStartMs}\t{startPos}\t{LinkSpikeDiagPatch.LocalMs}");
+        LinkDiagCfgRow(now);
+    }
 
     private void LinkDiagTick(float dt)
     {

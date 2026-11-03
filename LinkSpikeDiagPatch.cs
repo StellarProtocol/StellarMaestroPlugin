@@ -8,6 +8,7 @@ using Stellar.Abstractions.Services;
 namespace Stellar.Maestro;
 
 // MAESTRO-LINK SYNC SPIKE (dev diagnostic, gated by the spike folder — see Plugin.LinkDiag.cs).
+// DEBUG BUILDS ONLY — the csproj removes this file from non-Debug builds; nothing outside the 4 diag files references it.
 // Listener-side measurement log: what arrived off the network (RECV) and what actually played (PLAY) / released (REL), stamped with the
 // framework's server clock. Own notes come back too via the server-player "own-echo" path (Band-Instrument-Playback.md
 // "Double note" own-echo), so ONE client's log carries both its own echo and every other performer → the per-note delta

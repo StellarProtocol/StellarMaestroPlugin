@@ -6,6 +6,8 @@ using System.Text;
 
 namespace Stellar.Maestro;
 
+// DEBUG BUILDS ONLY (the csproj removes this file from non-Debug builds: C:\Users\Public is world-writable, so a release
+// must not carry a hidden local control channel). Called via partial methods declared in Plugin.cs.
 // DEV-ONLY, DORMANT — remote control + run markers for Claude's automated note-accuracy sweep (one client, measuring
 // the server's echo of our own notes: SEND rows = what we sent, PLAY/REL rows = what came back). Runs ONLY while the
 // Plugin.LinkDiag.cs diag is active (C:\Users\Public\maestro-link-spike\ exists); without that folder none of this
@@ -161,7 +163,7 @@ public sealed partial class Plugin
     // song = queue entry's file name; songStartServerMs = __b2base (buffered mode: song position x is stamped
     // __b2base + x, read back from Lua — the game's Z.ServerTime clock, not ServerNowMs) or, in B1 (no shared base),
     // serverNow at start.
-    private void LinkDiagPlainStart(string entry)
+    partial void LinkDiagPlainStart(string entry)
     {
         if (!LinkSpikeDiagPatch.On) return;
         try

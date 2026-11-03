@@ -86,15 +86,23 @@ public sealed partial class Plugin : IStellarPlugin
 
         _services.Framework.Update += PlaylistTick;   // auto-advance the queue when a song finishes
 
-        // STEP-0 spike: capture InstrumentService to read the ensemble grid from C#.
+        // Capture InstrumentService (its Tick) so the ensemble grid (Sync to ensemble) and the Link instrument check can read it.
         try { EnsemblePatch.Install(_services.Harmony.Create("ensemble"), m => _services.Log.Info(m)); }
         catch (Exception ex) { _services.Log.Warning($"[Maestro] ensemble patch install failed: {ex.Message}"); }
 
         InitLink();        // Maestro Link (website-run band room) — Plugin.Link*.cs
-        InitLinkDiag();    // dev-only sync diagnostics — dormant unless its folder exists (Plugin.LinkDiag.cs)
+        InitLinkDiag();    // dev-only sync diagnostics, DEBUG builds only — dormant unless its folder exists (Plugin.LinkDiag.cs)
 
         _services.Log.Info("[Maestro] constructed");
     }
+
+    // Dev diagnostics hooks, implemented in Plugin.LinkDiag.cs / Plugin.SweepCmd.cs, which compile in DEBUG builds only
+    // (csproj). Without an implementation the compiler removes these calls, arguments included — so keep the arguments
+    // plain values (no diag-only types) or a Release build won't bind them.
+    partial void InitLinkDiag();
+    partial void DisposeLinkDiag();
+    partial void LinkDiagLinkStart(long now, string songId, long songStartMs, int startPos);   // Link part START/CFG rows
+    partial void LinkDiagPlainStart(string entry);                                             // plain-playback START/CFG rows
 
     // Registers a hidden, draggable menu window (no launcher tile of its own — the launcher entry opens it).
     private IWindowControl RegisterWindow(string id, string title, int index, HudElement root, float width = 460f)

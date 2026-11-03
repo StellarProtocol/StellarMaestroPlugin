@@ -85,3 +85,7 @@ dotnet build -c Release
 `<GameInstallDir>\stellar\plugins\maestro\` after each build. Omit `Local.props` (or leave `GameInstallDir` blank) to build without deploying.
 
 Config persists as `stellar.maestro.config.json` in the game directory.
+
+## License
+
+AGPL-3.0-or-later.

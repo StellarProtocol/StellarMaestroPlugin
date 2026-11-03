@@ -70,6 +70,20 @@ Select any one of them in the queue and Preview loads the whole set. All stems s
 
 ---
 
+## Maestro Link
+
+**Play as a band, led from the website.** A band leader runs a room on [maestro.stellarresonance.app](https://maestro.stellarresonance.app) and picks the songs and who plays which part. Each member's character plays its own part, all in sync — no in-game ensemble needed.
+
+**Join a room:**
+
+1. Open **Maestro** → **Maestro Link**.
+2. Enter the room code (from the website, or ask your band leader) and press **Join**.
+3. That's it — the website chooses the songs and parts; Maestro equips and plays your part when the song starts.
+
+**Leave:** press **Leave**. Logging out disconnects you automatically.
+
+---
+
 ## Build from source
 
 ```sh
@@ -83,5 +97,7 @@ dotnet build -c Release
 
 `Local.props` is gitignored. Its `DeployPlugin` target copies the built DLL to
 `<GameInstallDir>\stellar\plugins\maestro\` after each build. Omit `Local.props` (or leave `GameInstallDir` blank) to build without deploying.
+
+Debug builds (`-c Debug`) also include developer note-timing diagnostics, inactive unless the folder `C:\Users\Public\maestro-link-spike\` exists; Release builds don't contain them.
 
 Config persists as `stellar.maestro.config.json` in the game directory.

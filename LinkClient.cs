@@ -10,8 +10,8 @@ using System.Threading.Tasks;
 namespace Stellar.Maestro;
 
 // Maestro Link transport — one game client WebSocket (protocol.md §2) on a BACKGROUND task. It never touches the game:
-// everything it learns is posted to Inbox and drained by the plugin's Update tick on the main thread (Maestro's SDK
-// 2.3.0 has no IFramework.Post — same lock-free-queue pattern as Plugin-ThirdParty-NuGet-Native-Dependencies.md).
+// everything it learns is posted to Inbox and drained by the plugin's Update tick on the main thread (a lock-free
+// queue, so ordering stays explicit in the tick, rather than IFramework.Post; see Plugin-ThirdParty-NuGet-Native-Dependencies.md).
 //
 // The single exception is `ping`: answered with `pong` right here on the socket thread, so the server's RTT sample
 // doesn't include up to a frame of main-thread latency (and survives a hitch/loading screen).

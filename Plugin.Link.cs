@@ -94,6 +94,7 @@ public sealed partial class Plugin
         _lkPhase  = LinkPhase.Connecting;
         _lkOnline = false;
         _lkPingMs = -1;
+        ClearLinkNext();
         _lk = new LinkClient(ws, hello);
         _lk.Start();
         _services.Log.Info($"[MaestroLink] joining {_lkCode} via {ws} as '{name}'");
@@ -151,6 +152,7 @@ public sealed partial class Plugin
         _lkErrorKey = errorKey;
         _lkLogoutPending = false;
         ClearLinkPlayers();   // the roster belongs to this session (kept only across a reconnect)
+        ClearLinkNext();
         _lkRoomName = "";
         if (wasLinked)
         {
@@ -282,7 +284,8 @@ public sealed partial class Plugin
         string t = LinkSettings.Str(m, "t") ?? "";
         switch (t)
         {
-            case "welcome":  OnLinkWelcome(m); break;
+            // welcome / play carry their own `next` → they reset the live `next` (latest arrival wins; LinkNext).
+            case "welcome":  ClearLinkNext(); OnLinkWelcome(m); break;
             case "error":    EndLink(ErrorKeyFor(LinkSettings.Str(m, "code") ?? "")); break;
             case "closed":   EndLink(ClosedKeyFor(LinkSettings.Str(m, "reason") ?? "")); break;
             case "settings":
@@ -290,7 +293,7 @@ public sealed partial class Plugin
                     OnLinkSettings(LinkSettings.Parse(s));   // `apply` ignored: settings never equip (§7.2)
                 break;
             case "prepare":  { var song = LinkSong.Parse(m); if (song != null) OnLinkPrepare(song); } break;
-            case "play":     { var song = LinkSong.Parse(m); if (song != null) OnLinkPlay(song); } break;
+            case "play":     ClearLinkNext(); { var song = LinkSong.Parse(m); if (song != null) OnLinkPlay(song); } break;
             case "stop":     // scope part = our stem re-assigned away; room (or missing) = stop, or with paused:true = pause
                 if (LinkSettings.Str(m, "scope") == "part") OnLinkStopPart();
                 else OnLinkStop(LinkSettings.Bool(m, "paused") == true, LinkSettings.Int(m, "positionMs") ?? 0);
@@ -300,6 +303,7 @@ public sealed partial class Plugin
                 else SendAck("equip", null, false, "bad_request");
                 break;
             case "players":  OnLinkPlayers(m); break;   // room roster (Plugin.Link.Players.cs)
+            case "next":     _lkNextLive = true; _lkNextTitle = LinkSettings.Str(m, "title"); break;   // live next title
             case "ping":     { var p = LinkSettings.Int(m, "pingMs"); if (p != null) _lkPingMs = p.Value; } break;   // RTT from the previous pong
         }
     }

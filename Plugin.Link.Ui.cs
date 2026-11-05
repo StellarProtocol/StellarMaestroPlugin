@@ -139,10 +139,16 @@ public sealed partial class Plugin
         return k != 0 ? LinkEquipName(inst, k) : LinkInstrumentName(inst);
     }
 
-    // Next: the running song's `next`; with nothing running, the prepared (upcoming) song.
+    // Next: the live `next` message if one arrived since the last play / welcome, else the running song's `next`, else
+    // the prepared (upcoming) song (LinkNext.Select). Set in HandleLinkMessage, cleared on JoinLink / EndLink.
+    private bool    _lkNextLive;
+    private string? _lkNextTitle;
+
+    private void ClearLinkNext() { _lkNextLive = false; _lkNextTitle = null; }
+
     private string LinkNextText()
     {
-        string? n = _lkRoomSong != null ? _lkRoomSong.Next : _lkPrepSong?.Title;
+        string? n = LinkNext.Select(_lkNextLive, _lkNextTitle, _lkRoomSong != null, _lkRoomSong?.Next, _lkPrepSong?.Title);
         return string.IsNullOrEmpty(n) ? "—" : n;
     }
 

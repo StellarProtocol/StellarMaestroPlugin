@@ -8,7 +8,7 @@ namespace Stellar.Maestro;
 // The main window's QUEUE panel (approved design 2026-11-06): playlist Pill dropdown + New / Rename / ✕ (delete, with
 // the house confirmation), the song list (raised 26 px tiles 2 px apart, exactly QueueRowsVisible rows then scrolling),
 // and the one-row footer (Auto next / Loop / Shuffle icon toggles, "+ Add"). Rows reorder by DRAG (framework
-// VirtualListElement.OnReorder, SDK 2.29.0-local.ddradius.4); the ▲ ▼ buttons are gone. Queue logic is Plugin.Playlist.cs.
+// VirtualListElement.OnReorder, SDK 2.29.0); the ▲ ▼ buttons are gone. Queue logic is Plugin.Playlist.cs.
 public sealed partial class Plugin
 {
     private const int   QueueRowsVisible = 8;
@@ -159,7 +159,7 @@ public sealed partial class Plugin
 
     // ── footer: ONE row, right-aligned: · spacer · [auto next] [loop] [shuffle] [+ Add] ──────────────────────────────
     // The three play-mode toggles are icon chips (Plugin.Style.Blocks.cs IconChip). Loop cycles Off → All → One. The
-    // toolkit has no tooltip (none in SDK 2.28.1 / 2.29.0-local), so while the pointer is on a toggle its plain-words
+    // toolkit has no tooltip (none in SDK 2.28.1 / 2.29.0), so while the pointer is on a toggle its plain-words
     // state ("Loop: all songs") replaces "N songs" in the QUEUE caption hint, and reverts on hover-out.
     private string? _footerHintKey;   // which toggle is hovered: "auto" / "loop" / "shuffle"; null = none
 

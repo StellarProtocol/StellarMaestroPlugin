@@ -27,9 +27,10 @@ public sealed partial class Plugin
     private const float NeutralMix      = 0.22f;   // neutral pill = panel + 22% MenuMuted
     private const float NeutralAccentMix = 0.08f;  // … + an 8% accent tint, like the tiles (user-approved 2026-11-06)
     private const float PillMinContrast = 4.5f;    // WCAG AA for the pill labels
-    // Primary (accent) pills only: white labels down to 3:1 (WCAG AA for large/bold text), so the purple theme's
-    // #c8508f keeps a WHITE label (≈4.2:1) instead of flipping dark; a very light accent still flips (user-approved
-    // 2026-11-06, option B). Neutral / Caution / Danger keep 4.5.
+    // Bold labels on a SOLID fill (Primary and Danger) keep white down to 3:1 (WCAG AA for large/bold text): the purple
+    // theme's #c8508f accent keeps a white label (≈4.2:1) instead of flipping dark (user-approved 2026-11-06, option B),
+    // and so does the Danger red (#ff4d4f@0.85, white ≈3.5:1 — e.g. Link's Disconnect); a very light accent still flips.
+    // Primary and Danger keep white down to 3:1; Neutral and Caution keep 4.5.
     private const float PrimaryMinContrast = 3.0f;
     private const float ChipWashAlpha   = 0.22f;   // coloured chip = bold text on a 22% pill of its colour
 
@@ -65,7 +66,7 @@ public sealed partial class Plugin
     private ColorRgba PrimaryFill() => Menu.MenuAccent;
     private ColorRgba PrimaryText() => EnsureContrast(White, PrimaryFill(), PrimaryMinContrast);
     private ColorRgba NeutralText() => EnsureContrast(TextColor(), NeutralFill(), PillMinContrast);
-    private ColorRgba DangerText()  => EnsureContrast(White, Over(DangerFill, PanelColor()), PillMinContrast);
+    private ColorRgba DangerText()  => EnsureContrast(White, Over(DangerFill, PanelColor()), PrimaryMinContrast);
     // Caution: a TINTED amber pill (the amber chip wash, opaque over the panel) so it reads one step below the SOLID red
     // Danger. The amber label is pushed to 4.5:1 against that fill (darkens on the Light theme).
     private ColorRgba CautionFill() => Over(StatusAmber with { A = ChipWashAlpha }, PanelColor());

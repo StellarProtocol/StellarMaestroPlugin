@@ -39,10 +39,30 @@ public sealed partial class Plugin
         var (max, list) = LinkPlayer.ParseMessage(m);
         _lkPlayers.Clear();
         _lkPlayers.AddRange(LinkPlayerMap.OwnFirst(list, _lkPlayerId));
-        _lkPlayerRows.Clear();
-        foreach (var p in _lkPlayers) _lkPlayerRows.Add(LinkPlayerMap.Map(p));
+        RemapLinkPlayers(LinkSongRunning());
         _lkMaxPlayers = max;
         _lkPlayersLoaded = true;
+    }
+
+    // "A song is running in the room" for the Problem rule (LinkPlayerMap.Map): the room song has started and is not
+    // paused — a prepared / next song does not count. It changes without a `players` message (song start, pause, end),
+    // so the cached rows are re-mapped whenever it flips (PlayerRows, polled by the slot Funcs).
+    private bool _lkRowsRunning;
+
+    private bool LinkSongRunning() => _lkRoomSong != null && !_lkPaused;
+
+    private List<LinkPlayerRow> PlayerRows()
+    {
+        bool running = LinkSongRunning();
+        if (running != _lkRowsRunning) RemapLinkPlayers(running);
+        return _lkPlayerRows;
+    }
+
+    private void RemapLinkPlayers(bool songRunning)
+    {
+        _lkRowsRunning = songRunning;
+        _lkPlayerRows.Clear();
+        foreach (var p in _lkPlayers) _lkPlayerRows.Add(LinkPlayerMap.Map(p, songRunning));
     }
 
     private void ClearLinkPlayers()
@@ -64,7 +84,7 @@ public sealed partial class Plugin
     {
         if (!_lkPlayersLoaded) return "";
         int playing = 0;
-        foreach (var r in _lkPlayerRows) if (r.Chip == LinkChip.Playing) playing++;
+        foreach (var r in PlayerRows()) if (r.Chip == LinkChip.Playing) playing++;
         int max = _lkMaxPlayers > 0 ? _lkMaxPlayers : _lkPlayers.Count;
         return _loc.TFormat("mst.link.players.count", _lkPlayers.Count, max, playing);
     }
@@ -125,7 +145,7 @@ public sealed partial class Plugin
     private HudElement BuildPlayerSlot(int i)
     {
         LinkPlayer? P() => i < _lkPlayers.Count ? _lkPlayers[i] : null;
-        LinkPlayerRow? R() => i < _lkPlayerRows.Count ? _lkPlayerRows[i] : null;
+        LinkPlayerRow? R() => PlayerRows() is var rows && i < rows.Count ? rows[i] : null;
         bool Mine() => P() is { } p && _lkPlayerId.Length > 0 && p.PlayerId == _lkPlayerId;
 
         return PlayerTile(new RowElement(new HudElement[]

@@ -79,11 +79,12 @@ internal static class LinkPlayerMap
     // so the root cause must win.
     private static readonly string[] ProblemOrder = { "no_instrument", "band_view_closed", "not_buffered", "not_synced" };
 
-    // Precedence top-down: 1. disconnected, 2. a known warning — but ONLY for a player with a part in the current /
-    // prepared song (part == true), 3. the state. A missing instrument / closed band view is NOT a problem by itself:
-    // Link equips per song, so before a song (or for a player resting this one out) it is the normal idle state, and
-    // the warnings are ignored there (user revision 2026-11-06).
-    public static LinkPlayerRow Map(LinkPlayer p)
+    // Precedence top-down: 1. disconnected, 2. a known warning — but ONLY while the part is actually failing right now,
+    // 3. the state. "Failing" = a song is RUNNING in the room (started + not paused; a prepared / next song does not
+    // count — songRunning, from the plugin), this player has a part in it (part == true), and is NOT already
+    // playing / counting in / equipping. Link auto-equips per song (equipping opens the band view), so warnings before
+    // a song — or while the equip is underway — are normal and ignored (user-agreed rule 2026-11-06).
+    public static LinkPlayerRow Map(LinkPlayer p, bool songRunning)
     {
         var equip = p.InstrumentId is int inst && inst > 0 ? LinkInstCol.Equip : LinkInstCol.NoInstrument;
         if (!p.Connected)
@@ -91,7 +92,7 @@ internal static class LinkPlayerMap
                 ? new LinkPlayerRow(LinkChip.Reconnect, LinkDot.Away, equip, null, false, false)
                 : new LinkPlayerRow(LinkChip.Offline, LinkDot.Offline, equip, null, true, false);
 
-        if (p.Part == true)
+        if (songRunning && p.Part == true && p.State is not ("playing" or "countin" or "equipping"))
             foreach (var w in ProblemOrder)
                 if (p.Warnings.Contains(w))
                     return new LinkPlayerRow(LinkChip.Problem, LinkDot.Online, LinkInstCol.Problem, w, false, true);

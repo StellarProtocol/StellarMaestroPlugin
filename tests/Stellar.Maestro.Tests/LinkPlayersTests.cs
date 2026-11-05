@@ -5,7 +5,7 @@ using Xunit;
 namespace Stellar.Maestro.Tests;
 
 // The `players` message parse + the PLAYERS row mapping (LinkPlayers.cs) — precedence: disconnected → warnings (only
-// with a part in the song) → state. (Theory data passes enum NAMES: the enums are internal, and a public test
+// while a running part is failing) → state. (Theory data passes enum NAMES: the enums are internal, and a public test
 // method can't take an internal parameter type.)
 public class LinkPlayersTests
 {
@@ -15,7 +15,7 @@ public class LinkPlayersTests
         return LinkPlayer.Parse(doc.RootElement)!;
     }
 
-    private static LinkPlayerRow Map(string json) => LinkPlayerMap.Map(P(json));
+    private static LinkPlayerRow Map(string json, bool songRunning = false) => LinkPlayerMap.Map(P(json), songRunning);
 
     [Fact]
     public void Parse_IsTolerant_MissingAndWrongTypedFieldsDefault()
@@ -63,9 +63,9 @@ public class LinkPlayersTests
     }
 
     [Fact]
-    public void Warnings_Problem_OnlyWithPart_FirstInFixedOrder()
+    public void Warnings_Problem_OnlyWhenRunningPartFails_FirstInFixedOrder()
     {
-        var r = Map("""{ "connected": true, "state": "playing", "part": true, "warnings": ["not_synced", "no_instrument", "band_view_closed"] }""");
+        var r = Map("""{ "connected": true, "state": "idle", "part": true, "warnings": ["not_synced", "no_instrument", "band_view_closed"] }""", true);
         Assert.Equal(LinkChip.Problem, r.Chip);
         Assert.Equal(LinkInstCol.Problem, r.Inst);
         Assert.Equal("no_instrument", r.Problem);
@@ -73,9 +73,8 @@ public class LinkPlayersTests
 
         // Order = LinkWarningText: no_instrument (root cause — the band view is closed whenever nothing is held)
         // → band_view_closed → not_buffered → not_synced.
-        Assert.Equal("no_instrument", Map("""{ "connected": true, "part": true, "warnings": ["band_view_closed", "no_instrument"] }""").Problem);
-        Assert.Equal("band_view_closed", Map("""{ "connected": true, "part": true, "warnings": ["not_synced", "band_view_closed"] }""").Problem);
-        Assert.Equal("not_buffered", Map("""{ "connected": true, "part": true, "warnings": ["not_synced", "not_buffered"] }""").Problem);
+        Assert.Equal("band_view_closed", Map("""{ "connected": true, "state": "idle", "part": true, "warnings": ["not_synced", "band_view_closed"] }""", true).Problem);
+        Assert.Equal("not_buffered", Map("""{ "connected": true, "state": "ready", "part": true, "warnings": ["not_synced", "not_buffered"] }""", true).Problem);
     }
 
     [Fact]
@@ -87,13 +86,32 @@ public class LinkPlayersTests
         Assert.Null(r.Problem);
     }
 
-    [Fact]
-    public void NoPart_BandViewClosed_IsResting()
+    [Theory]   // a prepared / next song (not running) never makes a Problem, even for a player with a part
+    [InlineData("ready", "Ready")]
+    [InlineData("idle", "Idle")]
+    public void PreparedSongOnly_PartNoInstrument_NoProblem(string state, string chip)
     {
-        var r = Map("""{ "connected": true, "state": "idle", "part": false, "instrumentId": 3, "warnings": ["band_view_closed"] }""");
+        var r = Map($$"""{ "connected": true, "state": "{{state}}", "part": true, "warnings": ["no_instrument"] }""", false);
+        Assert.Equal(Enum.Parse<LinkChip>(chip), r.Chip);
+        Assert.Equal(LinkInstCol.NoInstrument, r.Inst);
+    }
+
+    [Theory]   // already playing / counting in / equipping → the part is not failing, warnings ignored
+    [InlineData("playing", "Playing")]
+    [InlineData("countin", "Playing")]
+    [InlineData("equipping", "Switch")]
+    public void Running_PartBusy_IgnoresWarnings(string state, string chip)
+        => Assert.Equal(Enum.Parse<LinkChip>(chip),
+            Map($$"""{ "connected": true, "state": "{{state}}", "part": true, "instrumentId": 3, "warnings": ["not_buffered"] }""", true).Chip);
+
+    [Fact]
+    public void Running_NoPart_IsResting()
+    {
+        var r = Map("""{ "connected": true, "state": "idle", "part": false, "instrumentId": 3, "warnings": ["band_view_closed"] }""", true);
         Assert.Equal(LinkChip.Resting, r.Chip);
         Assert.Equal(LinkInstCol.NoPart, r.Inst);
     }
+
 
     [Theory]
     [InlineData("""{ "connected": true, "state": "ready", "instrumentId": 3 }""", "Equip")]

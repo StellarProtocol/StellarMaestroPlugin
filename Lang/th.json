@@ -48,6 +48,8 @@
   "mst.cap.songs": "เพลง",
   "mst.lib.noMatch": "ไม่มีเพลงที่ตรงกับคำค้นหา",
   "mst.lib.addsTo": "เพิ่มไปที่: {0}",
+  "mst.lib.added": "เพิ่มแล้ว",
+  "mst.lib.addedFooter": "เพิ่ม “{0}” ลงใน {1} · {2} เพลง",
   "mst.cap.previewing": "ฟังตัวอย่าง",
   "mst.pv.fromQueue": "จากคิว",
   "mst.cap.syncBand": "ซิงก์กับวง",

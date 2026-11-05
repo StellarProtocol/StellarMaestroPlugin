@@ -48,6 +48,8 @@
   "mst.cap.songs": "曲",
   "mst.lib.noMatch": "検索に一致する曲がありません。",
   "mst.lib.addsTo": "追加先: {0}",
+  "mst.lib.added": "追加済み",
+  "mst.lib.addedFooter": "「{0}」を{1}に追加 · {2}曲",
   "mst.cap.previewing": "試聴",
   "mst.pv.fromQueue": "キューから",
   "mst.cap.syncBand": "バンドと同期",

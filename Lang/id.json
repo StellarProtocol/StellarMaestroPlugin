@@ -48,6 +48,8 @@
   "mst.cap.songs": "Lagu",
   "mst.lib.noMatch": "Tidak ada lagu yang cocok.",
   "mst.lib.addsTo": "Ditambahkan ke: {0}",
+  "mst.lib.added": "Ditambah",
+  "mst.lib.addedFooter": "“{0}” ditambahkan ke {1} · {2} lagu",
   "mst.cap.previewing": "Pratinjau",
   "mst.pv.fromQueue": "dari antrean",
   "mst.cap.syncBand": "Sinkron dengan band",

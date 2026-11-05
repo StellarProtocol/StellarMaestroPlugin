@@ -46,7 +46,7 @@ public sealed partial class Plugin
                     OnWindow:  first => _songWindowFirst = first,
                     Height:    LibraryListHeight)
                 { ResetScroll = () => { var r = _songScrollReset; _songScrollReset = false; return r; } })),
-        MutedLine(() => _loc.TFormat("mst.lib.addsTo", Active.Name)),
+        BuildLibraryFooter(),   // "Adds to: …" / the green "✓ Added …" confirmation (Plugin.Library.Feedback.cs)
     }, Gap: 8f);
 
     private string LibraryHint()
@@ -141,6 +141,9 @@ public sealed partial class Plugin
                     new SpacerElement(TilePadX, ListTileHeight),   // Bare = no padding: the strut alone is the 26 px tile
                     new CellElement(new TextElement(() => SongSlotLabel(slot), Color: () => TextColor(), NoWrap: true)
                         { Ellipsize = true }, Weight: 1f),
+                    // "Added" (bold green) while this row's add-flash lasts; nothing otherwise.
+                    new ConditionalElement(() => SongSlotFlashing(slot),
+                        new TextElement(() => _loc.T("mst.lib.added"), Color: () => StatusGreen, NoWrap: true, FontSize: 12) { Bold = true }),
                     new CellElement(new TextElement(() => SongSlotDuration(slot), Color: () => MutedColor(),
                         Align: TextAlign.Right, NoWrap: true), Width: DurationColW),
                     new TextElement(() => "+", Color: () => StatusGreen, NoWrap: true, FontSize: 16) { Bold = true },
@@ -150,7 +153,7 @@ public sealed partial class Plugin
                 {
                     Bare = true,
                     OnHover = over => { _songRowHover.Over[slot] = over; _songRowHover.Id[slot] = SongSlotLabel(slot); },
-                }, hovered: () => _songRowHover.Get(slot, SongSlotLabel(slot))));
+                }, hovered: () => _songRowHover.Get(slot, SongSlotLabel(slot)), flashing: () => SongSlotFlashing(slot)));
         }
         return pool;
     }
@@ -194,6 +197,7 @@ public sealed partial class Plugin
     {
         if (libIdx < 0 || libIdx >= _songView.Length) return;
         AddToActive(System.IO.Path.GetFileName(_songView[libIdx]));
+        MarkLibraryAdded(_songView[libIdx]);   // row flash + footer confirmation
     }
 
     // Rescans the midi/ folder, then opens the Library window centred on the main window — so newly-dropped files show

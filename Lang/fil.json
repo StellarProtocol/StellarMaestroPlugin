@@ -48,6 +48,8 @@
   "mst.cap.songs": "Mga kanta",
   "mst.lib.noMatch": "Walang kantang tugma sa hinanap mo.",
   "mst.lib.addsTo": "Idadagdag sa: {0}",
+  "mst.lib.added": "Naidagdag",
+  "mst.lib.addedFooter": "Naidagdag ang “{0}” sa {1} · {2} kanta",
   "mst.cap.previewing": "Pine-preview",
   "mst.pv.fromQueue": "mula sa pila",
   "mst.cap.syncBand": "I-sync sa banda",

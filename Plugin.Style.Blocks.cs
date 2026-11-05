@@ -144,12 +144,19 @@ public sealed partial class Plugin
 
     // `hovered` (optional): the row draws its OWN hover (a Bare selectable inside has no wash), so the whole tile —
     // the trailing ✕ included — lights up as one piece.
-    private HudElement ListTile(HudElement row, Func<bool>? selected = null, Func<bool>? hovered = null) => new BubbleElement(row)
+    private HudElement ListTile(HudElement row, Func<bool>? selected = null, Func<bool>? hovered = null,
+        Func<bool>? flashing = null)
     {
-        FillColorFn = () => selected != null && selected() ? SelectedTileColor()
-                          : hovered != null && hovered() ? HoverTileColor() : TileColor(),
-        CornerRadius = TileRadius, PaddingX = 0f, PaddingY = 0f,
-    };
+        var tile = new BubbleElement(row)
+        {
+            FillColorFn = () => flashing != null && flashing() ? FlashTileColor()
+                              : selected != null && selected() ? SelectedTileColor()
+                              : hovered != null && hovered() ? HoverTileColor() : TileColor(),
+            CornerRadius = TileRadius, PaddingX = 0f, PaddingY = 0f,
+        };
+        // `flashing` (Library "added"): a 1 px green ring on top of the green wash; no ring otherwise.
+        return flashing == null ? tile : tile with { OutlineColorFn = () => flashing() ? StatusGreen : (ColorRgba?)null };
+    }
 
     // The selected row's 3 px accent bar at the tile's left edge (transparent when not selected, so nothing moves).
     private HudElement AccentBar(Func<bool> selected) => new BubbleElement(new SpacerElement(3f, ListTileHeight - 6f))

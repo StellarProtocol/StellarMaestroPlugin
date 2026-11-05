@@ -48,6 +48,8 @@
   "mst.cap.songs": "Songs",
   "mst.lib.noMatch": "No songs match your search.",
   "mst.lib.addsTo": "Adds to: {0}",
+  "mst.lib.added": "Added",
+  "mst.lib.addedFooter": "Added “{0}” to {1} · {2} songs",
   "mst.cap.previewing": "Previewing",
   "mst.pv.fromQueue": "from the queue",
   "mst.cap.syncBand": "Sync with band",

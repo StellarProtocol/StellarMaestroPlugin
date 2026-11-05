@@ -48,6 +48,8 @@
   "mst.cap.songs": "곡",
   "mst.lib.noMatch": "검색과 일치하는 곡이 없습니다.",
   "mst.lib.addsTo": "추가 위치: {0}",
+  "mst.lib.added": "추가됨",
+  "mst.lib.addedFooter": "“{0}”을(를) {1}에 추가 · {2}곡",
   "mst.cap.previewing": "미리 듣기",
   "mst.pv.fromQueue": "대기열에서",
   "mst.cap.syncBand": "밴드와 동기화",

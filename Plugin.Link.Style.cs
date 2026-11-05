@@ -30,6 +30,7 @@ public sealed partial class Plugin
     private static readonly ColorRgba StatusGreen = Rgb(0x5fd38d);
     private static readonly ColorRgba StatusAmber = Rgb(0xffcc73);   // the house "Join" chip yellow
     private static readonly ColorRgba StatusRed   = Rgb(0xff4d4f);
+    private static readonly ColorRgba DangerFill  = Rgb(0xff4d4f, 0.85f);   // the house Danger pill (fixed, not themed)
     private static readonly ColorRgba ProblemText = Rgb(0xff8a8b);   // the house remove-hover glyph red (readable body text)
     private static readonly ColorRgba White       = new(1f, 1f, 1f);
     private static readonly ColorRgba Transparent = new(0f, 0f, 0f, 0f);
@@ -45,6 +46,7 @@ public sealed partial class Plugin
     private ColorRgba PrimaryFill() => Menu.MenuAccent;
     private ColorRgba PrimaryText() => EnsureContrast(White, PrimaryFill(), PillMinContrast);
     private ColorRgba NeutralText() => EnsureContrast(TextColor(), NeutralFill(), PillMinContrast);
+    private ColorRgba DangerText()  => EnsureContrast(White, Over(DangerFill, PanelColor()), PillMinContrast);
     // Error body text = the Problem red, kept readable on the surface it sits on (the panel for join errors, the raised
     // tile for a player row's Problem reason): #ff8a8b is ~7.7:1 on the dark themes (unchanged), but too pale on the
     // Light theme, where EnsureContrast walks it toward black into a dark red.
@@ -106,6 +108,10 @@ public sealed partial class Plugin
         PillButton(label, PrimaryFill, PrimaryText, onClick, width, enabled);
     private HudElement NeutralButton(Func<string> label, Action onClick, float width = 0f, Func<bool>? enabled = null) =>
         PillButton(label, NeutralFill, NeutralText, onClick, width, enabled);
+    // Danger: house "destructive confirm" pill — used for Link's Disconnect (user-approved exception 2026-11-06: it
+    // interrupts a live shared activity mid-song, so it must not look like the Neutral pill beside it).
+    private HudElement DangerButton(Func<string> label, Action onClick, float width = 0f, Func<bool>? enabled = null) =>
+        PillButton(label, () => DangerFill, DangerText, onClick, width, enabled);
 
     private static HudElement PillPair(HudElement left, HudElement right) => new RowElement(new HudElement[]
     {

@@ -66,8 +66,8 @@ public sealed partial class Plugin
         }, Gap: 8f),
         BuildLinkPlayersPanel(),   // Plugin.Link.Players.cs
         PillPair(
-            NeutralButton(() => "■ " + _loc.T("mst.link.stopPart"), StopMyPart, PillPairWidth, () => _lkPartActive),
-            NeutralButton(() => _loc.T("mst.link.disconnect"), () => EndLink(""), PillPairWidth)),
+            NeutralButton(() => _loc.T("mst.link.stopPart"), StopMyPart, PillPairWidth, () => _lkPartActive),
+            DangerButton(() => _loc.T("mst.link.disconnect"), () => EndLink(""), PillPairWidth)),
     }, Gap: 8f);
 
     // One fixed-width top cell whose panel stretches to the row's height, so ROOM and NOW PLAYING are equally tall

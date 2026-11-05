@@ -7,7 +7,8 @@ namespace Stellar.Maestro;
 
 // The main window's QUEUE panel (approved design 2026-11-06): playlist Pill dropdown + New / Rename / ✕ (delete, with
 // the house confirmation), the song list (raised 26 px tiles 2 px apart, exactly QueueRowsVisible rows then scrolling),
-// and the one-row footer (move ▲ ▼, Auto next / Loop / Shuffle icon toggles, "+ Add"). Queue logic is Plugin.Playlist.cs.
+// and the one-row footer (Auto next / Loop / Shuffle icon toggles, "+ Add"). Rows reorder by DRAG (framework
+// VirtualListElement.OnReorder, SDK 2.29.0-local.ddradius.4); the ▲ ▼ buttons are gone. Queue logic is Plugin.Playlist.cs.
 public sealed partial class Plugin
 {
     private const int   QueueRowsVisible = 8;
@@ -104,7 +105,12 @@ public sealed partial class Plugin
             Pool:      BuildQueuePool(),
             OnWindow:  first => _queueWindowFirst = first,
             Height:    QueueListHeight)
-        { ResetScroll = () => { var r = _queueScrollReset; _queueScrollReset = false; return r; } });
+        {
+            ResetScroll = () => { var r = _queueScrollReset; _queueScrollReset = false; return r; },
+            // Drag a row to move it (< 6 px = a normal click / select; Esc or a drop outside cancels; the list
+            // auto-scrolls at its edges). Remove-then-insert item indices; persisted like the old ▲ ▼.
+            OnReorder = ReorderQueue,
+        });
 
     // Row = [accent bar (selected) | index or green ▶ (playing) | name | length | ✕] on ONE raised tile (lighter when
     // selected or hovered). A click on the row selects it (Play then plays it); ✕ removes it at once. The ✕ sits inside
@@ -151,7 +157,7 @@ public sealed partial class Plugin
         return pool;
     }
 
-    // ── footer: ONE row (user-approved 2026-11-06): [▲] [▼] · spacer · [auto next] [loop] [shuffle] [+ Add] ─────────
+    // ── footer: ONE row, right-aligned: · spacer · [auto next] [loop] [shuffle] [+ Add] ──────────────────────────────
     // The three play-mode toggles are icon chips (Plugin.Style.Blocks.cs IconChip). Loop cycles Off → All → One. The
     // toolkit has no tooltip (none in SDK 2.28.1 / 2.29.0-local), so while the pointer is on a toggle its plain-words
     // state ("Loop: all songs") replaces "N songs" in the QUEUE caption hint, and reverts on hover-out.
@@ -181,8 +187,6 @@ public sealed partial class Plugin
         void OnShuf(bool o) => FooterHover("shuffle", o);
         return new RowElement(new HudElement[]
         {
-            GlyphPill(() => "▲", () => MoveQueue(-1), GlyphLabelW, () => _queueSel > 0 && _queueSel < Active.Songs.Count),
-            GlyphPill(() => "▼", () => MoveQueue(+1), GlyphLabelW, () => _queueSel >= 0 && _queueSel < Active.Songs.Count - 1),
             new SpacerElement(0f),
             new ConditionalElement(() => _autoAdvance,
                 IconChip("icon-autonext-on.png",  true,  autoHover, ToggleAutoAdvance, OnAuto),

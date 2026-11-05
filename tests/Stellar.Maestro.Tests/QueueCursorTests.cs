@@ -18,11 +18,54 @@ public class QueueCursorTests
     [Fact]
     public void Remove_PlayingSong_ClearsCursor() => Assert.Equal(-1, QueueCursor.AfterRemove(3, 3, sameList: true));
 
+    // Drag-reorder = remove-then-insert (VirtualListElement.OnReorder).
     [Fact]
-    public void Swap_InOtherPlaylist_LeavesCursor() => Assert.Equal(3, QueueCursor.AfterSwap(3, 3, 4, sameList: false));
+    public void Move_InOtherPlaylist_LeavesCursor() => Assert.Equal(3, QueueCursor.AfterMove(3, 0, 5, sameList: false));
 
     [Fact]
-    public void Swap_PlayingSong_FollowsIt() => Assert.Equal(4, QueueCursor.AfterSwap(3, 3, 4, sameList: true));
+    public void Move_PlayingSong_FollowsIt()
+    {
+        Assert.Equal(7, QueueCursor.AfterMove(3, 3, 7, sameList: true));   // dragged down
+        Assert.Equal(0, QueueCursor.AfterMove(3, 3, 0, sameList: true));   // dragged up
+    }
+
+    [Fact]
+    public void Move_FromAboveToBelow_ShiftsCursorUp() => Assert.Equal(2, QueueCursor.AfterMove(3, 1, 5, sameList: true));
+
+    [Fact]
+    public void Move_FromBelowToAbove_ShiftsCursorDown() => Assert.Equal(4, QueueCursor.AfterMove(3, 6, 1, sameList: true));
+
+    [Fact]
+    public void Move_OntoCursorFromAbove_ShiftsCursorUp()     // item 1 inserted at 3 → old 3 moves to 2
+        => Assert.Equal(2, QueueCursor.AfterMove(3, 1, 3, sameList: true));
+
+    [Fact]
+    public void Move_OntoCursorFromBelow_ShiftsCursorDown()   // item 5 inserted at 3 → old 3 moves to 4
+        => Assert.Equal(4, QueueCursor.AfterMove(3, 5, 3, sameList: true));
+
+    [Fact]
+    public void Move_EntirelyAboveOrBelow_LeavesCursor()
+    {
+        Assert.Equal(5, QueueCursor.AfterMove(5, 0, 2, sameList: true));
+        Assert.Equal(1, QueueCursor.AfterMove(1, 4, 7, sameList: true));
+    }
+
+    [Fact]
+    public void Move_NoSong_StaysNone() => Assert.Equal(-1, QueueCursor.AfterMove(-1, 2, 4, sameList: true));
+
+    // Cross-check against a real list for every (from, to, cursor) in a 6-song playlist.
+    [Fact]
+    public void Move_MatchesListSemantics()
+    {
+        for (int from = 0; from < 6; from++)
+        for (int to = 0; to < 6; to++)
+        for (int cur = 0; cur < 6; cur++)
+        {
+            var list = new System.Collections.Generic.List<int> { 0, 1, 2, 3, 4, 5 };
+            var x = list[from]; list.RemoveAt(from); list.Insert(to, x);
+            Assert.Equal(list.IndexOf(cur), QueueCursor.AfterMove(cur, from, to, sameList: true));
+        }
+    }
 
     [Fact]
     public void Marker_OnlyWhenViewingPlayingList()

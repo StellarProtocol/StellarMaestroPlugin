@@ -94,13 +94,13 @@ public sealed partial class Plugin
     }
 
     // ── glyph pills ───────────────────────────────────────────────────────────────────────────────────────────────
-    // A pill whose label is a SYMBOL (◀◀ ▶▶ ▲ ▼ ✕). Same 28 px geometry as PillButton, but the label is PLAIN text, not
+    // A pill whose label is a SYMBOL (◀◀ ▶▶ ✕). Same 28 px geometry as PillButton, but the label is PLAIN text, not
     // bold: the TMP bold face lacks the Geometric Shapes block ("■" and "▾" draw blank in bold, KB §6), so ◀ ▶ ▲ ▼ would
     // too. The plain menu font (14 px fixed) draws them, as the old ButtonElement transport did.
     // The label HUGS the glyph (width 0): a fixed label box clips (NoWrap + Width adds a RectMask2D), and the symbol
     // widths of the fallback face aren't known until measured in-game. Pill = glyph + 2×12 padding, 28 tall.
     private const float GlyphWideLabelW  = 0f;    // "◀◀" / "▶▶"
-    private const float GlyphLabelW      = 0f;    // "▲" / "▼" / "✕"
+    private const float GlyphLabelW      = 0f;    // "✕"
 
     private HudElement GlyphPill(Func<string> glyph, Action onClick, float width, Func<bool>? enabled = null)
         => RoundPill(

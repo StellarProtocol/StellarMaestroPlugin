@@ -121,13 +121,18 @@ public sealed partial class Plugin
         SavePlaylists();
     }
 
-    private void MoveQueue(int delta)
+    // Drag-reorder of the viewed playlist (VirtualListElement.OnReorder: remove-then-insert ITEM indices, never a no-op).
+    // The selection follows its song (the dragged one stays selected); the playing cursor follows only when this IS the
+    // playing playlist.
+    private void ReorderQueue(int from, int to)
     {
-        int i = _queueSel, j = i + delta;
-        if (i < 0 || i >= Active.Songs.Count || j < 0 || j >= Active.Songs.Count) return;
-        (Active.Songs[i], Active.Songs[j]) = (Active.Songs[j], Active.Songs[i]);
-        _nowPlaying = QueueCursor.AfterSwap(_nowPlaying, i, j, ViewingPlaying);
-        _queueSel = j;
+        var songs = Active.Songs;
+        if (from < 0 || from >= songs.Count || to < 0 || to >= songs.Count || from == to) return;
+        var x = songs[from];
+        songs.RemoveAt(from);
+        songs.Insert(to, x);
+        _nowPlaying = QueueCursor.AfterMove(_nowPlaying, from, to, ViewingPlaying);
+        _queueSel   = QueueCursor.AfterMove(_queueSel, from, to, sameList: true);
         SavePlaylists();
     }
 

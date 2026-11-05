@@ -71,11 +71,15 @@ internal static class QueueCursor
         return nowPlaying > removed ? nowPlaying - 1 : nowPlaying;
     }
 
-    // After swapping rows `a` and `b` of the viewed playlist (▲ / ▼).
-    public static int AfterSwap(int nowPlaying, int a, int b, bool sameList)
+    // After a drag-reorder of the viewed playlist: REMOVE-THEN-INSERT (VirtualListElement.OnReorder) — the item at
+    // `from` is removed, then inserted so it ends up at index `to`. The moved song follows to `to`; a song between the
+    // two shifts by one toward the gap. Also used for the row SELECTION (always `sameList` — it lives in the view).
+    public static int AfterMove(int index, int from, int to, bool sameList)
     {
-        if (!sameList) return nowPlaying;
-        return nowPlaying == a ? b : nowPlaying == b ? a : nowPlaying;
+        if (!sameList || index < 0 || from == to) return index;
+        if (index == from) return to;
+        int i = index > from ? index - 1 : index;   // after the remove
+        return i >= to ? i + 1 : i;                  // after the insert
     }
 
     // Row index that shows the green "▶" in the viewed list: only when viewing the playing playlist.

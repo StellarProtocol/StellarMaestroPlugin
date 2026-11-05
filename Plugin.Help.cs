@@ -40,15 +40,27 @@ public sealed partial class Plugin
     // (childForceExpandWidth=false), so nesting the sprite in a centred Row pins it to its intrinsic 16×16 no matter
     // how wide the clickable chip is. The cell is also kept snug (28px ≈ 16 icon + 12 selectable h-padding) so the
     // hover chip hugs the icon instead of leaving dead click area.
+    //
+    // House style (2026-11-06): the hover is a soft ROUND wash drawn by a 28 px circle Bubble around a Bare selectable
+    // (the default selectable hover was a square). Same 28 px cell, so the columns don't move.
     private HudElement ResetIconButton(Action reset)
-        => new CellElement(
+    {
+        var hover = new HoverFlag();
+        return new CellElement(new BubbleElement(
             new SelectableElement(
                 new RowElement(new HudElement[]
                 {
+                    new SpacerElement(6f, 28f),
                     new SpriteElement(() => ResetIconPng()!, new UvRect(0f, 0f, 1f, 1f), 16, 16),
-                }, Justify: RowJustify.Center),
-                OnClick: reset),
-            Width: 28f);
+                    new SpacerElement(6f, 28f),
+                }, Gap: 0.01f, Justify: RowJustify.Center),
+                OnClick: reset)
+            { Bare = true, OnHover = over => hover.On = over })
+        {
+            FillColorFn = () => hover.On ? Menu.MenuText with { A = 0.10f } : Transparent,
+            CornerRadius = 14f, PaddingX = 0f, PaddingY = 0f,
+        }, Width: 28f);
+    }
 
     private IWindowControl _tipWindow = null!;
     private string _tipKey = "";   // which help entry the tip window is showing; "" = closed

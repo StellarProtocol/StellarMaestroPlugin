@@ -51,16 +51,19 @@ public sealed partial class Plugin
         }, Gap: 10f);
 
     // ── hub card ──────────────────────────────────────────────────────────────────────────────────────────────────
-    // The house card (raised tile → Selectable → [icon | bold title over muted status | › ]) at 48 px: a 40 px strut +
-    // the selectable's 4 + 4. Bubble OUTSIDE the selectable on purpose (a bubble wrapped IN a selectable gets a
-    // full-width chip painted behind it). The text column sits in a weighted Cell so a long status ellipsizes instead
-    // of pushing the chevron out of the half-width card.
-    private const float HubCardStrut = 40f;
+    // The house card (raised tile → Bare Selectable → [icon | bold title over muted status | › ]) at 48 px (a 48 px
+    // strut). Bubble OUTSIDE the selectable on purpose (a bubble wrapped IN a selectable gets a full-width chip painted
+    // behind it); the hover is the tile's own fill, so it keeps the rounded corners. The text column sits in a
+    // weighted Cell so a long status ellipsizes instead of pushing the chevron out of the half-width card.
+    private const float HubCardHeight = 48f;
 
     private HudElement HubCard(Func<byte[]?> icon, Func<string> title, Func<string> status, Action onOpen)
-        => new BubbleElement(new SelectableElement(
+    {
+        var hover = new HoverFlag();
+        return new BubbleElement(new SelectableElement(
             new RowElement(new HudElement[]
             {
+                new SpacerElement(1f, HubCardHeight),   // + the 8 px row gap = the left inset; also the height strut
                 IconBox(icon, CardIconSize),
                 new CellElement(new ColumnElement(new HudElement[]
                 {
@@ -69,36 +72,28 @@ public sealed partial class Plugin
                 }, Gap: 1f), Weight: 1f),
                 // Bold (styled/TMP path) so FontSize applies and the glyph can't fall back to a taller OS font.
                 new TextElement(() => "›", Color: () => MutedColor(), NoWrap: true, FontSize: 18) { Bold = true },
-                new SpacerElement(2f, HubCardStrut),   // right margin + the height strut that pins every card to 48
+                new SpacerElement(6f, 1f),   // right margin
             }, Gap: 8f),
-            OnClick: onOpen))
+            OnClick: onOpen) { Bare = true, OnHover = over => hover.On = over })
         {
-            FillColorFn = () => TileColor(), CornerRadius = TileRadius, PaddingX = 0f, PaddingY = 0f,
+            FillColorFn = () => hover.On ? HoverTileColor() : TileColor(), CornerRadius = TileRadius, PaddingX = 0f, PaddingY = 0f,
         };
+    }
 
     // ── glyph pills ───────────────────────────────────────────────────────────────────────────────────────────────
     // A pill whose label is a SYMBOL (◀◀ ▶▶ ▲ ▼ ✕). Same 28 px geometry as PillButton, but the label is PLAIN text, not
     // bold: the TMP bold face lacks the Geometric Shapes block ("■" and "▾" draw blank in bold, KB §6), so ◀ ▶ ▲ ▼ would
     // too. The plain menu font (14 px fixed) draws them, as the old ButtonElement transport did.
     // The label HUGS the glyph (width 0): a fixed label box clips (NoWrap + Width adds a RectMask2D), and the symbol
-    // widths of the fallback face aren't known until measured in-game. Pill = glyph + 2×6 strut + 2×6 selectable.
+    // widths of the fallback face aren't known until measured in-game. Pill = glyph + 2×12 padding, 28 tall.
     private const float GlyphWideLabelW  = 0f;    // "◀◀" / "▶▶"
     private const float GlyphLabelW      = 0f;    // "▲" / "▼" / "✕"
 
     private HudElement GlyphPill(Func<string> glyph, Action onClick, float width, Func<bool>? enabled = null)
-        => new BubbleElement(new SelectableElement(
-            new RowElement(new HudElement[]
-            {
-                new SpacerElement(PillPadX, PillStrutHeight),
-                new TextElement(glyph, Color: () => enabled == null || enabled() ? NeutralText() : MutedColor(),
-                    Width: width, Align: TextAlign.Center, NoWrap: true),
-                new SpacerElement(PillPadX, PillStrutHeight),
-            }, Gap: 0.01f, Justify: RowJustify.Center),
-            OnClick: () => { if (enabled == null || enabled()) onClick(); }))
-        {
-            FillColorFn = () => enabled == null || enabled() ? NeutralFill() : Mix(PanelColor(), NeutralFill(), 0.5f),
-            CornerRadius = PillRadius, PaddingX = 0f, PaddingY = 0f,
-        };
+        => RoundPill(
+            new TextElement(glyph, Color: () => enabled == null || enabled() ? NeutralText() : MutedColor(),
+                Width: width, Align: TextAlign.Center, NoWrap: true),
+            NeutralFill, onClick, enabled);
 
     // ── round-knob slider ─────────────────────────────────────────────────────────────────────────────────────────
     // SquareHandle = a knob exactly HandleSize square (the default handle is stretched to the row height = a capsule).
@@ -151,10 +146,14 @@ public sealed partial class Plugin
 
     // ── clickable chip ────────────────────────────────────────────────────────────────────────────────────────────
     // A StatusChip that toggles/cycles on click: a Bare selectable (no tint / padding of its own) around the chip, so
-    // the on/off geometry stays the chip's 72×24.
+    // the on/off geometry stays the chip's; the hover is a stronger chip wash (round, like the chip).
     private HudElement ChipToggle(Func<string> label, Func<bool> on, Action onClick, float width = ChipWidth)
-        => new SelectableElement(
-            StatusChip(label, () => on() ? StatusGreen : (ColorRgba?)null, width), OnClick: onClick) { Bare = true };
+    {
+        var hover = new HoverFlag();
+        return new SelectableElement(
+            StatusChip(label, () => on() ? StatusGreen : (ColorRgba?)null, width, () => hover.On), OnClick: onClick)
+            { Bare = true, OnHover = over => hover.On = over };
+    }
 
     // ── icon-only ✕ ───────────────────────────────────────────────────────────────────────────────────────────────
     // At rest a muted glyph; on hover a red glyph on a soft red rounded wash (house "Remove hover"). ⚠️ Pooled row: the

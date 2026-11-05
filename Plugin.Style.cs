@@ -95,33 +95,55 @@ public sealed partial class Plugin
     private static ColorRgba Rgb(uint rgb, float a = 1f) =>
         new(((rgb >> 16) & 0xff) / 255f, ((rgb >> 8) & 0xff) / 255f, (rgb & 0xff) / 255f, a);
 
+    // ── hover that follows the shape ──────────────────────────────────────────────────────────────────────────────
+    // A normal SelectableElement paints its hover as a SQUARE wash over its rect, which showed as a rectangle on the
+    // round pills (in-game 2026-11-06). Every clickable here is therefore a Bare selectable (no wash, no padding of
+    // its own) whose OnHover flips a flag, and the surrounding Bubble's FillColorFn shows the hover — same capsule /
+    // circle / rounded tile. Hover = MenuText@HoverMix over the fill (lighter on dark themes, darker on Light).
+    // There is no pressed tint: the toolkit has no pointer-down callback for a Bare selectable.
+    private sealed class HoverFlag { public bool On; }
+
+    private const float HoverMix = 0.10f;
+    private ColorRgba HoverFill(ColorRgba fill) => Over(Menu.MenuText with { A = HoverMix }, fill);
+
     // ── pill buttons ──────────────────────────────────────────────────────────────────────────────────────────────
-    // ONE build for every labelled button: a fill-tinted Bubble around a SelectableElement, 28 px = a 20 px strut on
-    // each side of a bold-13 label + the selectable's 4 + 4 padding (MultiTool's in-game-measured pill). `enabled`
-    // (optional) is a Link addition — the house kit has no disabled pill: a disabled pill keeps its geometry, swallows
-    // the click, and dims (label → Muted, fill → halfway to the panel), so toggling it never moves anything.
-    private const float PillStrutHeight = 20f;
-    private const float PillRadius      = 14f;   // half the 28 px pill → fully round ends (0 = the 3 px chip rounding)
-    private const float PillPadX        = 6f;
+    // ONE build for every labelled button: a fill-tinted Bubble around a Bare SelectableElement; 28 px tall = the
+    // 28 px struts either side of a bold-13 label, 12 px side padding (the old 6 px strut + the non-Bare selectable's
+    // 6). `enabled` (optional): a disabled pill keeps its geometry, swallows the click, and dims (label → Muted,
+    // fill → halfway to the panel), so toggling it never moves anything.
+    private const float PillHeight      = 28f;
+    private const float PillRadius      = PillHeight / 2f;   // fully round ends (0 = the 3 px chip rounding = square)
+    private const float PillPadX        = 12f;
     private const float PillPairWidth   = 96f;   // label box for two-in-a-row pairs (weighted cells only split
                                                  // equally when both halves prefer the same width)
     private const float LinkActionLabelW = 150f; // label box of the linked view's bottom pair (half of the 540 window ≈ 250):
                                                  // roomier than PillPairWidth for "Resume my part" + the longer locales
 
     private HudElement PillButton(Func<string> label, Func<ColorRgba> fill, Func<ColorRgba> text, Action onClick,
-        float width = 0f, Func<bool>? enabled = null) => new BubbleElement(new SelectableElement(
+        float width = 0f, Func<bool>? enabled = null) => RoundPill(
+            new TextElement(label, Color: () => enabled == null || enabled() ? text() : MutedColor(),
+                Width: width, Align: TextAlign.Center, NoWrap: true, FontSize: 13) { Bold = true },
+            fill, onClick, enabled);
+
+    // The shared pill shell (labelled pills + glyph pills): Bubble → Bare Selectable → Row[strut, label, strut].
+    private HudElement RoundPill(HudElement label, Func<ColorRgba> fill, Action onClick, Func<bool>? enabled)
+    {
+        var hover = new HoverFlag();
+        bool En() => enabled == null || enabled();
+        return new BubbleElement(new SelectableElement(
             new RowElement(new HudElement[]
             {
-                new SpacerElement(PillPadX, PillStrutHeight),
-                new TextElement(label, Color: () => enabled == null || enabled() ? text() : MutedColor(),
-                    Width: width, Align: TextAlign.Center, NoWrap: true, FontSize: 13) { Bold = true },
-                new SpacerElement(PillPadX, PillStrutHeight),
+                new SpacerElement(PillPadX, PillHeight),
+                label,
+                new SpacerElement(PillPadX, PillHeight),
             }, Gap: 0.01f, Justify: RowJustify.Center),
-            OnClick: () => { if (enabled == null || enabled()) onClick(); }))
+            OnClick: () => { if (En()) onClick(); })
+            { Bare = true, OnHover = over => hover.On = over })
         {
-            FillColorFn = () => enabled == null || enabled() ? fill() : Mix(PanelColor(), fill(), 0.5f),
+            FillColorFn = () => !En() ? Mix(PanelColor(), fill(), 0.5f) : hover.On ? HoverFill(fill()) : fill(),
             CornerRadius = PillRadius, PaddingX = 0f, PaddingY = 0f,
         };
+    }
 
     private HudElement PrimaryButton(Func<string> label, Action onClick, float width = 0f, Func<bool>? enabled = null) =>
         PillButton(label, PrimaryFill, PrimaryText, onClick, width, enabled);
@@ -188,12 +210,18 @@ public sealed partial class Plugin
     private const float ChipStrutHeight = 22f;
     private const float ChipRadius      = (ChipStrutHeight + 2f) / 2f;   // half the 24 px chip → round ends
 
-    private HudElement StatusChip(Func<string> label, Func<ColorRgba?> color, float width = ChipWidth) => new ConditionalElement(
-        () => color() != null,
-        ChipPill(new TextElement(label, Color: () => color() ?? MutedColor(), Align: TextAlign.Center, NoWrap: true) { Bold = true },
-                 () => (color() ?? MutedColor()) with { A = ChipWashAlpha }, width),
-        ChipPill(new TextElement(label, Color: () => MutedColor(), Align: TextAlign.Center, NoWrap: true),
-                 () => MutedColor() with { A = 0.15f }, width));
+    // `hovered` (clickable chips): the wash gets a little stronger, so the hover keeps the chip's round shape.
+    private HudElement StatusChip(Func<string> label, Func<ColorRgba?> color, float width = ChipWidth,
+        Func<bool>? hovered = null)
+    {
+        float Wash(float a) => hovered != null && hovered() ? a + 0.12f : a;
+        return new ConditionalElement(
+            () => color() != null,
+            ChipPill(new TextElement(label, Color: () => color() ?? MutedColor(), Align: TextAlign.Center, NoWrap: true) { Bold = true },
+                     () => (color() ?? MutedColor()) with { A = Wash(ChipWashAlpha) }, width),
+            ChipPill(new TextElement(label, Color: () => MutedColor(), Align: TextAlign.Center, NoWrap: true),
+                     () => MutedColor() with { A = Wash(0.15f) }, width));
+    }
 
     private static HudElement ChipPill(TextElement text, Func<ColorRgba> fill, float width) => new CellElement(
         new BubbleElement(new RowElement(new HudElement[]

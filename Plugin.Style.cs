@@ -128,9 +128,25 @@ public sealed partial class Plugin
 
     private HudElement PillButton(Func<string> label, Func<ColorRgba> fill, Func<ColorRgba> text, Action onClick,
         float width = 0f, Func<bool>? enabled = null) => RoundPill(
-            new TextElement(label, Color: () => enabled == null || enabled() ? text() : MutedColor(),
-                Width: width, Align: TextAlign.Center, NoWrap: true, FontSize: 13) { Bold = true },
+            LiftBold(new TextElement(label, Color: () => enabled == null || enabled() ? text() : MutedColor(),
+                Width: width, Align: TextAlign.Center, NoWrap: true, FontSize: 13) { Bold = true }),
             fill, onClick, enabled);
+
+    // Bold (TMP) labels sit LOW in a centred box: the bold face's ascent/descent are asymmetric. Measured in-game at
+    // UI scale 1 (2026-11-06, 28 px pills): "Play" / "Stop" ink rows 9..21 (9 px above, 6 below, descenders
+    // included), caps 9..18. A Row centres its children vertically, so a strut can't move the text; instead the
+    // label goes in a Column with a 2×BoldLabelLift spacer UNDER it, which centres the pair and lifts the text by
+    // BoldLabelLift. 1 px makes the full ink 8..20 (8 above / 7 below), the closest whole-pixel balance; 2 px would put
+    // the caps 2.5 px high on labels without descenders ("Close"). Layout units are canvas units, so the lift scales
+    // with the UI scale like the struts around it. Pill height is unchanged (the column is 2 px taller than the
+    // text, far below the 28 px struts).
+    private const float BoldLabelLift = 1f;
+
+    private static HudElement LiftBold(HudElement label) => new ColumnElement(new HudElement[]
+    {
+        label,
+        new SpacerElement(0f, 2f * BoldLabelLift),
+    }, Gap: 0.01f);
 
     // The shared pill shell (labelled pills + glyph pills): Bubble → Bare Selectable → Row[strut, label, strut].
     private HudElement RoundPill(HudElement label, Func<ColorRgba> fill, Action onClick, Func<bool>? enabled)
@@ -224,13 +240,13 @@ public sealed partial class Plugin
         float Wash(float a) => hovered != null && hovered() ? a + 0.12f : a;
         return new ConditionalElement(
             () => color() != null,
-            ChipPill(new TextElement(label, Color: () => color() ?? MutedColor(), Align: TextAlign.Center, NoWrap: true) { Bold = true },
+            ChipPill(LiftBold(new TextElement(label, Color: () => color() ?? MutedColor(), Align: TextAlign.Center, NoWrap: true) { Bold = true }),
                      () => (color() ?? MutedColor()) with { A = Wash(ChipWashAlpha) }, width),
             ChipPill(new TextElement(label, Color: () => MutedColor(), Align: TextAlign.Center, NoWrap: true),
                      () => MutedColor() with { A = Wash(0.15f) }, width));
     }
 
-    private static HudElement ChipPill(TextElement text, Func<ColorRgba> fill, float width) => new CellElement(
+    private static HudElement ChipPill(HudElement text, Func<ColorRgba> fill, float width) => new CellElement(
         new BubbleElement(new RowElement(new HudElement[]
             {
                 new SpacerElement(0f, ChipStrutHeight),   // width 0 + height > 0 = a non-flexible height strut

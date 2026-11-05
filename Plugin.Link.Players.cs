@@ -216,7 +216,7 @@ public sealed partial class Plugin
 
     private ColorRgba PlayerInstColor(LinkPlayerRow? r) => r switch
     {
-        { Inst: LinkInstCol.Problem } => ProblemText,
+        { Inst: LinkInstCol.Problem } => ErrorTextColor(TileColor()),   // on the raised row tile
         { Inst: LinkInstCol.NoPart or LinkInstCol.NoInstrument } or { NameMuted: true } => MutedColor(),
         _ => TextColor(),
     };

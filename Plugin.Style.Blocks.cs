@@ -180,7 +180,7 @@ public sealed partial class Plugin
         {
             FillColorFn = () => (green ? StatusGreen : MutedColor()) with
                 { A = (green ? ChipWashAlpha : 0.15f) + (hover.On ? 0.12f : 0f) },
-            CornerRadius = IconChipH / 2f, PaddingX = 0f, PaddingY = 0f,
+            CornerRadius = RoundRadius(IconChipH), PaddingX = 0f, PaddingY = 0f,
         };
     }
 

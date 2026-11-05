@@ -58,7 +58,7 @@ public sealed partial class Plugin
             { Bare = true, OnHover = over => hover.On = over })
         {
             FillColorFn = () => hover.On ? Menu.MenuText with { A = 0.10f } : Transparent,
-            CornerRadius = 14f, PaddingX = 0f, PaddingY = 0f,
+            CornerRadius = RoundRadius(28f), PaddingX = 0f, PaddingY = 0f,   // side/2 − 1 keeps it 28 (see RoundRadius)
         }, Width: 28f);
     }
 
@@ -142,8 +142,8 @@ public sealed partial class Plugin
     private const float SliderValueW = 50f;
     // The round "?" button: a 24 px circle. It must stay SQUARE, so NOTHING inside may be taller than the side:
     //   • a 20 px strut + the bold-12 "?" (a 22 px TMP line) drew 20 × 22 (in-game 2026-11-06) — an oval;
-    //   • a 2 px spacer + that line in a Column drew 24 × 26 (in-game, build 256e7e3) — the stacked content
-    //     outgrew the 24 px strut (the line box measures taller than 22 there), and the bubble grew with it.
+    //   • it then drew 24 × 26 (builds 256e7e3 and d43edca) — NOT the content: that measured 24 × 24 (bridge
+    //     ui.inspect); the bubble's 9-slice background reported a 26 px min height (see the radius note below).
     // So the content is exactly [24 px strut, the "?" text] side by side in one Row (Row height = the taller of the
     // two = 24, as the text line is ≤ 24), with no spacer stacked on the text. The glyph sat ~1 px high in its line
     // box; instead of nudging it with a spacer, CenterGlyphs centres what is DRAWN (TMP Midline) inside the text box,
@@ -153,10 +153,11 @@ public sealed partial class Plugin
     // The "?" button: a small round Neutral button (24 px circle, bold-12 "?"), lighter on hover, tinted with the accent
     // while its tip is open. Bare selectable = no padding / wash of its own, so the circle is exactly HelpSize and the
     // hover keeps its round shape; the whole circle is the click target. OnClickWithRect anchors the tip under it.
-    // Radius = side / 2. The framework's BubbleBg(r) sprite is 2r+4 texels with a 9-slice border of r+1, so on a 2r
-    // rect Unity scales the border down by 2r/(2r+2) (≈0.92 here): the arc is r texels drawn in ~r−1 px plus ~1 px of
-    // flat edge per side — within a pixel of a true circle. An exact circle would need the framework to bake a
-    // border == radius (or a dedicated circle sprite).
+    // Radius = side / 2 − 1 (RoundRadius, Plugin.Style.cs): the bubble's 9-slice Image reports a min height of its
+    // summed sprite borders (radius + 1 each), so radius side/2 made the bubble 26 tall around this 24 × 24 content —
+    // the oval measured in-game (Bubble 24 × 26, Selectable 24 × 24, "?" text 24 × 18.2). With 11 the borders sum to
+    // 24: an exact 24 × 24 bubble whose arc has a 1 px straight run per side. An exact circle would need the framework
+    // to bake a sprite whose border == radius (or a dedicated circle sprite).
     private readonly Dictionary<string, bool> _helpHover = new();
 
     private HudElement HelpButtonCell(string key)
@@ -177,7 +178,7 @@ public sealed partial class Plugin
             FillColorFn = () => _tipKey == key && _tipWindow.IsShown ? Over(AccentColor() with { A = 0.35f }, NeutralFill())
                               : _helpHover.TryGetValue(key, out var h) && h ? Over(TextColor() with { A = 0.10f }, NeutralFill())
                               : NeutralFill(),
-            CornerRadius = HelpSize / 2f, PaddingX = 0f, PaddingY = 0f,
+            CornerRadius = RoundRadius(HelpSize), PaddingX = 0f, PaddingY = 0f,
         };
 
     // Registers tooltip content for `key` and returns its "?" pill. Append it as the LAST child of a row so the "?"

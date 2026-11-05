@@ -119,7 +119,17 @@ public sealed partial class Plugin
     // 6). `enabled` (optional): a disabled pill keeps its geometry, swallows the click, and dims (label → Muted,
     // fill → halfway to the panel), so toggling it never moves anything.
     private const float PillHeight      = 28f;
-    private const float PillRadius      = PillHeight / 2f;   // fully round ends (0 = the 3 px chip rounding = square)
+    private const float PillRadius      = PillHeight / 2f - 1f;   // 13 = RoundRadius(28): round ends without growing the 28 px pill
+
+    // The corner radius for a ROUND (capsule / circle) bubble of height `side`: side / 2 − 1, NOT side / 2.
+    // Measured cause (in-game 2026-11-06): the bubble's background is a 9-slice Image whose sprite border is radius + 1
+    // on every side (framework WindowThemeAssets.BubbleBg), and a sliced Image is itself a layout element reporting a
+    // MIN size of the summed borders. The bubble's height = the max of its content's (24 / 28) and that min, so
+    // radius side/2 made every round control 2 px taller than its content: the "?" drew 24 × 26 around a 24 × 24
+    // selectable, and the 28 px pills drew 30 px (pixel scan of t05_full.png: Play fill rows 512..541). With
+    // radius side/2 − 1 the borders sum to exactly `side`, so the bubble is its content's size; the ends stay round
+    // (a 1 px straight run each side). Width is not affected (BubbleBinding pins it through a LayoutElement).
+    private static float RoundRadius(float side) => side / 2f - 1f;
     private const float PillPadX        = 12f;
     private const float PillPairWidth   = 96f;   // label box for two-in-a-row pairs (weighted cells only split
                                                  // equally when both halves prefer the same width)
@@ -231,7 +241,7 @@ public sealed partial class Plugin
     // language, so cycling it never changes its size.
     private const float ChipWidth       = 72f;
     private const float ChipStrutHeight = 22f;
-    private const float ChipRadius      = (ChipStrutHeight + 2f) / 2f;   // half the 24 px chip → round ends
+    private const float ChipRadius      = (ChipStrutHeight + 2f) / 2f - 1f;   // 11 = RoundRadius(24): round ends of the 24 px chip (see RoundRadius)
 
     private HudElement StatusChip(Func<string> label, Func<ColorRgba?> color, float width = ChipWidth) => new ConditionalElement(
         () => color() != null,

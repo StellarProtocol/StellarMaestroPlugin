@@ -66,7 +66,7 @@ public sealed partial class Plugin
         }, Gap: 8f),
         BuildLinkPlayersPanel(),   // Plugin.Link.Players.cs
         PillPair(
-            NeutralButton(() => _loc.T("mst.link.stopPart"), StopMyPart, PillPairWidth, () => _lkPartActive),
+            CautionButton(() => _loc.T("mst.link.stopPart"), StopMyPart, PillPairWidth, () => _lkPartActive),
             DangerButton(() => _loc.T("mst.link.disconnect"), () => EndLink(""), PillPairWidth)),
     }, Gap: 8f);
 

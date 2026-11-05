@@ -47,6 +47,10 @@ public sealed partial class Plugin
     private ColorRgba PrimaryText() => EnsureContrast(White, PrimaryFill(), PillMinContrast);
     private ColorRgba NeutralText() => EnsureContrast(TextColor(), NeutralFill(), PillMinContrast);
     private ColorRgba DangerText()  => EnsureContrast(White, Over(DangerFill, PanelColor()), PillMinContrast);
+    // Caution: a TINTED amber pill (the amber chip wash, opaque over the panel) so it reads one step below the SOLID red
+    // Danger. The amber label is pushed to 4.5:1 against that fill (darkens on the Light theme).
+    private ColorRgba CautionFill() => Over(StatusAmber with { A = ChipWashAlpha }, PanelColor());
+    private ColorRgba CautionText() => EnsureContrast(StatusAmber, CautionFill(), PillMinContrast);
     // Error body text = the Problem red, kept readable on the surface it sits on (the panel for join errors, the raised
     // tile for a player row's Problem reason): #ff8a8b is ~7.7:1 on the dark themes (unchanged), but too pale on the
     // Light theme, where EnsureContrast walks it toward black into a dark red.
@@ -112,6 +116,9 @@ public sealed partial class Plugin
     // interrupts a live shared activity mid-song, so it must not look like the Neutral pill beside it).
     private HudElement DangerButton(Func<string> label, Action onClick, float width = 0f, Func<bool>? enabled = null) =>
         PillButton(label, () => DangerFill, DangerText, onClick, width, enabled);
+    // Caution: stops / pauses only the user's OWN part of a live shared activity (Link "Stop my part").
+    private HudElement CautionButton(Func<string> label, Action onClick, float width = 0f, Func<bool>? enabled = null) =>
+        PillButton(label, CautionFill, CautionText, onClick, width, enabled);
 
     private static HudElement PillPair(HudElement left, HudElement right) => new RowElement(new HudElement[]
     {

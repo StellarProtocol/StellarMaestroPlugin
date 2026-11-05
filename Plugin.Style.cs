@@ -53,6 +53,13 @@ public sealed partial class Plugin
                                             Over(Menu.MenuText with { A = TileTextMix }, PanelColor()));
     // Neutral carries the accent too (prototype #4a3c52 on the purple theme), so the pills sit in the same family as
     // the tinted tiles instead of reading grey. Hover / disabled / the "?" open tint all derive from this.
+    // Hub cards sit directly on the WINDOW background (not in a panel), where the panel-based Tile (#353238 measured)
+    // almost matched the window and blended in. Card = window background + 6 % text + 8 % accent: on the purple theme
+    // ≈ #41313f over a ≈ #2a232f window (prototype: #3a2e41 cards on #2e2433) — clearly lighter, same accent family.
+    private const float CardTextMix   = 0.06f;
+    private const float CardAccentMix = 0.08f;
+    private ColorRgba CardColor() => Over(Menu.MenuAccent with { A = CardAccentMix },
+                                          Over(Menu.MenuText with { A = CardTextMix }, Menu.MenuBackground));
     private ColorRgba NeutralFill() => Over(Menu.MenuAccent with { A = NeutralAccentMix },
                                             Over(Menu.MenuMuted with { A = NeutralMix }, PanelColor()));
     private ColorRgba PrimaryFill() => Menu.MenuAccent;

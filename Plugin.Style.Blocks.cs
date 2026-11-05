@@ -31,11 +31,24 @@ public sealed partial class Plugin
         return png;
     }
 
-    // A fixed-size square icon. ImageElement only sets a PREFERRED size and Cell/Selectable force-expand a child's
-    // width (the icon-squish gotcha): the fixed-width Cell pins the column, the inner Row keeps the image square.
-    private static HudElement IconBox(Func<byte[]?> png, float size) => new CellElement(
-        new RowElement(new HudElement[] { new ImageElement(png, (int)size, (int)size) }, Justify: RowJustify.Center),
-        Width: size);
+    // Icon tile (user-approved 2026-11-06, option A): a rounded tile in the LIVE theme accent with the flat white glyph
+    // PNG centred on it at ~62 % of the tile (aspect kept — the glyph PNGs are square). Colour is never baked into the
+    // art, so the tile follows the theme. Radius ≈ 22 % of the size (9 at 40 px, 7 at 32 px). The padding around the
+    // image IS the tile margin, so the tile is exactly `size` square. The fixed-width Cell pins the column (Cell /
+    // Selectable force-expand a child's width — the icon-squish gotcha) and the inner Row keeps the image square.
+    // ⚠️ A white glyph on a very light accent theme reads poorly (accepted for now).
+    private const float IconGlyphShare = 0.62f;
+
+    private HudElement IconBox(Func<byte[]?> png, float size)
+    {
+        int glyph = (int)MathF.Round(size * IconGlyphShare);
+        float pad = (size - glyph) / 2f;
+        return new CellElement(new BubbleElement(
+            new RowElement(new HudElement[] { new ImageElement(png, glyph, glyph) }, Gap: 0.01f, Justify: RowJustify.Center))
+        {
+            FillColorFn = () => AccentColor(), CornerRadius = MathF.Round(size * 0.22f), PaddingX = pad, PaddingY = pad,
+        }, Width: size);
+    }
 
     // Window title block: 40 px icon + bold title over a live status line (the hub card and the window header build
     // their status from the same Func, so the two can't drift).
@@ -76,7 +89,7 @@ public sealed partial class Plugin
             }, Gap: 8f),
             OnClick: onOpen) { Bare = true, OnHover = over => hover.On = over })
         {
-            FillColorFn = () => hover.On ? HoverTileColor() : TileColor(), CornerRadius = TileRadius, PaddingX = 0f, PaddingY = 0f,
+            FillColorFn = () => hover.On ? HoverFill(CardColor()) : CardColor(), CornerRadius = TileRadius, PaddingX = 0f, PaddingY = 0f,
         };
     }
 

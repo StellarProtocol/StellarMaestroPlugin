@@ -43,8 +43,8 @@ Launch the game and open **Maestro** from the Stellar launcher (Plugins group).
 ## Usage
 
 1. Open **Maestro** from the launcher (band tools are in-world only).
-2. Put your `.mid` / `.midi` files in the game's `midi\` folder — Maestro creates it and shows the path in the **Library** window (use **Rescan folder** / **Locate**).
-3. Summon a free-play instrument in-game (Free Play), then add songs from the **Library** to the queue and hit ▶.
+2. Put your `.mid` / `.midi` files in the game's `midi\` folder — Maestro creates it; **Open folder** in the **Library** window opens it and **Rescan** picks up new files.
+3. Summon a free-play instrument in-game (Free Play), then add songs from the **Library** to the queue and press **Play**.
 4. For groups, turn on **Network Sync**, and (optionally) **Sync to ensemble** so playback locks to the band's beat.
 5. Use **Preview** to hear a song through the real instrument sounds before you play it — no summon required.
 

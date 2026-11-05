@@ -1,0 +1,113 @@
+using System;
+using System.Collections.Generic;
+using System.Text.Json;
+
+namespace Stellar.Maestro;
+
+// Maestro Link `players` message (protocol: the room's roster, broadcast on every change, in JOIN order) and the
+// pure row mapping the Link window's PLAYERS panel draws from (approved design 2026-11-05). Kept free of any UI /
+// game type so the mapping is unit-testable (tests/Stellar.Maestro.Tests) — the window only turns the result into
+// localized text and colours.
+//
+// Parsing is tolerant like LinkSettings: a missing / null / wrong-typed field = its default, an unknown warning or
+// state string is kept but maps to nothing special.
+internal sealed class LinkPlayer
+{
+    public string  PlayerId = "";
+    public string  Name     = "";
+    public bool    Connected;
+    public int     AwayMs;          // how long a disconnected player has been gone
+    public int?    PingMs;
+    public string? State;           // idle | preparing | ready | countin | playing | equipping | stopped_by_player | null
+    public int?    InstrumentId;
+    public int?    ToneId;
+    public bool?   Part;            // has a stem in the current song; null = no song
+    public readonly List<string> Warnings = new();
+
+    public static LinkPlayer? Parse(JsonElement e)
+    {
+        if (e.ValueKind != JsonValueKind.Object) return null;
+        var p = new LinkPlayer
+        {
+            PlayerId     = LinkSettings.Str(e, "playerId") ?? "",
+            Name         = LinkSettings.Str(e, "name") ?? "",
+            Connected    = LinkSettings.Bool(e, "connected") ?? false,
+            AwayMs       = Math.Max(0, LinkSettings.Int(e, "awayMs") ?? 0),
+            PingMs       = LinkSettings.Int(e, "pingMs"),
+            State        = LinkSettings.Str(e, "state"),
+            InstrumentId = LinkSettings.Int(e, "instrumentId"),
+            ToneId       = LinkSettings.Int(e, "toneId"),
+            Part         = LinkSettings.Bool(e, "part"),
+        };
+        if (e.TryGetProperty("warnings", out var w) && w.ValueKind == JsonValueKind.Array)
+            foreach (var x in w.EnumerateArray())
+                if (x.ValueKind == JsonValueKind.String && x.GetString() is { Length: > 0 } s) p.Warnings.Add(s);
+        return p;
+    }
+
+    // The whole message: maxPlayers (0 = not sent) + the rows in server (join) order. Rows that aren't objects are
+    // skipped; a missing `players` array = an empty room.
+    public static (int MaxPlayers, List<LinkPlayer> Players) ParseMessage(JsonElement m)
+    {
+        var list = new List<LinkPlayer>();
+        if (m.TryGetProperty("players", out var arr) && arr.ValueKind == JsonValueKind.Array)
+            foreach (var e in arr.EnumerateArray())
+                if (Parse(e) is { } p) list.Add(p);
+        return (Math.Max(0, LinkSettings.Int(m, "maxPlayers") ?? 0), list);
+    }
+}
+
+// The state chip words (one localized key each, mst.link.chip.*).
+internal enum LinkChip { Playing, Ready, Switch, Stopped, Resting, Idle, Problem, Reconnect, Offline }
+
+// Status dot colour class.
+internal enum LinkDot { Online, Away, Offline }
+
+// What the instrument column shows instead of "Instrument · Tone".
+internal enum LinkInstCol { Equip, Problem, NoPart, None }
+
+internal readonly record struct LinkPlayerRow(LinkChip Chip, LinkDot Dot, LinkInstCol Inst, string? Problem, bool NameMuted, bool ShowPing);
+
+internal static class LinkPlayerMap
+{
+    // A disconnected player this recent is "Reconnect" (amber), older is "Offline" (grey).
+    public const int ReconnectWindowMs = 30000;
+
+    // First problem shown, in this order (most actionable first — matches the plugin's own warning line).
+    private static readonly string[] ProblemOrder = { "band_view_closed", "no_instrument", "not_buffered", "not_synced" };
+
+    // Precedence top-down (approved design): 1. disconnected, 2. a known warning, 3. the state.
+    public static LinkPlayerRow Map(LinkPlayer p)
+    {
+        if (!p.Connected)
+            return p.AwayMs < ReconnectWindowMs
+                ? new LinkPlayerRow(LinkChip.Reconnect, LinkDot.Away, LinkInstCol.Equip, null, false, false)
+                : new LinkPlayerRow(LinkChip.Offline, LinkDot.Offline, LinkInstCol.Equip, null, true, false);
+
+        foreach (var w in ProblemOrder)
+            if (p.Warnings.Contains(w))
+                return new LinkPlayerRow(LinkChip.Problem, LinkDot.Online, LinkInstCol.Problem, w, false, true);
+
+        var chip = p.State switch
+        {
+            "equipping"         => LinkChip.Switch,
+            "stopped_by_player" => LinkChip.Stopped,
+            "playing" or "countin" => LinkChip.Playing,
+            "ready" or "preparing" => LinkChip.Ready,
+            // part == false only exists while a song is in play (null = no song) → this player sits this one out.
+            _ => p.Part == false ? LinkChip.Resting : LinkChip.Idle,
+        };
+        return new LinkPlayerRow(chip, LinkDot.Online, chip == LinkChip.Resting ? LinkInstCol.NoPart : LinkInstCol.Equip,
+                                 null, false, true);
+    }
+
+    // Own row first, everyone else in server (join) order.
+    public static List<LinkPlayer> OwnFirst(List<LinkPlayer> players, string myId)
+    {
+        var r = new List<LinkPlayer>(players.Count);
+        if (myId.Length > 0)
+            foreach (var p in players) if (p.PlayerId == myId) { r.Add(p); break; }
+        foreach (var p in players) if (myId.Length == 0 || p.PlayerId != myId) r.Add(p);
+        return r;
+    }
+}

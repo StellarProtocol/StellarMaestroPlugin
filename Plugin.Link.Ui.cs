@@ -4,20 +4,22 @@ using Stellar.Abstractions.Services;
 
 namespace Stellar.Maestro;
 
-// Maestro Link window (approved prototype 2026-10-28). ONE window, two faces:
-//   • unlinked → the join form (code + Join, Connecting / error lines, consent text);
-//   • linked   → the compact Link status view, which REPLACES the main Maestro window while linked (the launcher tile
+// Maestro Link window. ONE window, two faces:
+//   • unlinked → the join form (code + Join, Connecting / error lines, consent text) + "How it works";
+//   • linked   → the Link status view, which REPLACES the main Maestro window while linked (the launcher tile
 //                opens this instead — see Plugin.cs OnOpen). Disconnect hands the main window back (EndLink).
+// Look = the Stellar Design Language (approved design 2026-11-05; helpers in Plugin.Link.Style.cs): ROOM + NOW PLAYING
+// panels side by side, the PLAYERS panel (Plugin.Link.Players.cs), then a Neutral pill pair. Window width 540.
 // Opening from hidden remounts on top within its ZCat, so no BringToFront (Rule 5).
 public sealed partial class Plugin
 {
     private IWindowControl _linkWindow = null!;
     private IWindowControl _mainWindow = null!;
 
-    private static readonly ColorRgba LinkDotOnline = new(0.36f, 0.84f, 0.52f, 1f);
-
-    private ColorRgba? Muted() => _services.Theme.Colors.TextMuted;
-    private ColorRgba? Warn()  => _services.Theme.Colors.Warning;
+    // Two equal top panels: (540 − 2×12 body − 8 gap) / 2. Fixed widths, because weighted cells only split equally
+    // when both children PREFER the same width (WindowBuilder-Patterns.md) and a long song title would widen one side.
+    private const float LinkTopPanelW = 254f;
+    private const float LinkLabelW    = 56f;   // "My part" / "Next" label column
 
     private HudElement BuildLinkRoot() => new ColumnElement(new HudElement[]
     {
@@ -30,72 +32,92 @@ public sealed partial class Plugin
 
     private HudElement BuildLinkJoinView() => new ColumnElement(new HudElement[]
     {
-        new TextElement(() => _loc.T("mst.link.hint"), Color: Muted),
-        new RowElement(new HudElement[]
-        {
-            // Sanitized as typed (uppercase, code alphabet, max 6) — Get re-seeds the field with the cleaned value.
-            new CellElement(new InputElement(
-                Get:      () => _lkCode,
-                Submit:   s => { _lkCode = SanitizeCode(s); JoinLink(); },
-                Width:    180f,
-                OnChange: s => _lkCode = SanitizeCode(s)), Weight: 1f),
-            new CellElement(new ButtonElement(
-                Label:   () => _lkPhase == LinkPhase.Connecting ? _loc.T("mst.link.joining") : _loc.T("mst.link.join"),
-                OnClick: JoinLink,
-                Enabled: CanJoin,
-                Style:   MenuButtonStyle.Filled), Width: 120f),
-        }, Gap: 6f),
-        new ConditionalElement(() => _lkPhase == LinkPhase.Connecting,
-            new TextElement(() => _loc.T("mst.link.connecting"), Color: Muted)),
-        new ConditionalElement(() => _lkPhase == LinkPhase.Off && _lkErrorKey.Length > 0,
-            new TextElement(() => _lkErrorKey.Length > 0 ? _loc.T(_lkErrorKey) : "", Color: Warn)),
+        SectionPanel(null, null,
+            new TextElement(() => _loc.T("mst.link.hint"), Color: () => MutedColor()),
+            new RowElement(new HudElement[]
+            {
+                // Sanitized as typed (uppercase, code alphabet, max 6) — Get re-seeds the field with the cleaned value.
+                new CellElement(new InputElement(
+                    Get:      () => _lkCode,
+                    Submit:   s => { _lkCode = SanitizeCode(s); JoinLink(); },
+                    Width:    180f,
+                    OnChange: s => _lkCode = SanitizeCode(s)), Weight: 1f),
+                new CellElement(PrimaryButton(
+                    () => _lkPhase == LinkPhase.Connecting ? _loc.T("mst.link.joining") : _loc.T("mst.link.join"),
+                    JoinLink, PillPairWidth, CanJoin), Width: 120f),
+            }, Gap: 8f),
+            new ConditionalElement(() => _lkPhase == LinkPhase.Connecting,
+                new TextElement(() => _loc.T("mst.link.connecting"), Color: () => MutedColor())),
+            new ConditionalElement(() => _lkPhase == LinkPhase.Off && _lkErrorKey.Length > 0,
+                new TextElement(() => _lkErrorKey.Length > 0 ? _loc.T(_lkErrorKey) : "", Color: () => MutedColor())),
+            new TextElement(() => _loc.T("mst.link.consent"), Color: () => MutedColor())),
         BuildLinkHowPanel(),   // Plugin.Link.How.cs
-        new TextElement(() => _loc.T("mst.link.consent"), Color: Muted),
     }, Gap: 8f);
 
     // ---- linked: status view ----
-
-    private HudElement LinkRow(Func<string> label, Func<string> value) => new RowElement(new HudElement[]
-    {
-        new CellElement(new TextElement(label, Color: Muted), Width: 56f),
-        new CellElement(new TextElement(value, NoWrap: true), Weight: 1f),
-    }, Gap: 6f);
 
     private HudElement BuildLinkStatusView() => new ColumnElement(new HudElement[]
     {
         new RowElement(new HudElement[]
         {
-            new CellElement(new TextElement(() => "●", Color: () => _lkOnline ? LinkDotOnline : _services.Theme.Colors.Warning), Width: 16f),
-            new TextElement(() => _loc.TFormat("mst.link.room", _lkRoomCode), Emphasis: true),
-            new SpacerElement(),
-            new TextElement(LinkPingText, Color: Muted),
-        }, Gap: 6f),
-        LinkRow(() => _loc.T("mst.link.part"), LinkPartText),
-        new ConditionalElement(() => LinkResting, new TextElement(() => _loc.T("mst.link.resting"), Color: Muted)),
-        LinkRow(() => _loc.T("mst.song"), () => _lkRoomSong?.Title is { Length: > 0 } t ? t : _loc.T("mst.link.waiting")),
+            LinkTopPanel(BuildLinkRoomPanel()),
+            LinkTopPanel(BuildLinkNowPlayingPanel()),
+        }, Gap: 8f),
+        BuildLinkPlayersPanel(),   // Plugin.Link.Players.cs
+        PillPair(
+            NeutralButton(() => "■ " + _loc.T("mst.link.stopPart"), StopMyPart, PillPairWidth, () => _lkPartActive),
+            NeutralButton(() => _loc.T("mst.link.disconnect"), () => EndLink(""), PillPairWidth)),
+    }, Gap: 8f);
+
+    // One fixed-width top cell whose panel stretches to the row's height, so ROOM and NOW PLAYING are equally tall
+    // while NOW PLAYING grows (count-in / Paused / warning lines). A Row never stretches a child's height on its own
+    // (childForceExpandHeight = false); a Fill Conditional is the one element that reports flexibleHeight, which makes
+    // the Row grow the cell to the row height and the cell + Cond stretch the bubble down to it (always-true When).
+    private static HudElement LinkTopPanel(HudElement panel)
+        => new CellElement(new ConditionalElement(() => true, panel, Fill: true), Width: LinkTopPanelW);
+
+    // ROOM: ● code · room name / My part.
+    private HudElement BuildLinkRoomPanel() => SectionPanel(() => _loc.T("mst.link.cap.room"), LinkPingText,
         new RowElement(new HudElement[]
         {
-            new CellElement(new SliderElement(Get: LinkProgressFrac, Set: _ => { }, Min: 0f, Max: 1f, Enabled: () => false), Weight: 1f),
-            new CellElement(new TextElement(() => $"{Mmss(LinkPositionMs())} / {Mmss(_lkRoomSong?.DurationMs ?? 0)}"), Width: 92f),
+            new TextElement(() => "●", Color: () => _lkOnline ? StatusGreen : _services.Theme.Colors.Warning, NoWrap: true),
+            new TextElement(() => _lkRoomCode, Color: () => TextColor(), NoWrap: true) { Bold = true },
+            new CellElement(new TextElement(() => _lkRoomName.Length > 0 ? "· " + _lkRoomName : "",
+                Color: () => MutedColor(), NoWrap: true) { Ellipsize = true }, Weight: 1f),
         }, Gap: 6f),
-        LinkRow(() => _loc.T("mst.link.next"), LinkNextText),
+        LinkLine(() => _loc.T("mst.link.myPart"), LinkPartText));
+
+    // NOW PLAYING: title (or "Waiting for the room…") / thin progress bar / Next, then the count-in, Paused and
+    // warning lines when they apply.
+    private HudElement BuildLinkNowPlayingPanel() => SectionPanel(() => _loc.T("mst.link.cap.nowPlaying"), LinkTimeText,
+        new ConditionalElement(() => _lkRoomSong?.Title is { Length: > 0 },
+            new TextElement(() => _lkRoomSong?.Title ?? "", Color: () => TextColor(), NoWrap: true) { Bold = true, Ellipsize = true },
+            new TextElement(() => _loc.T("mst.link.waiting"), Color: () => MutedColor(), NoWrap: true) { Ellipsize = true }),
+        // Default-style bar = a rounded recessed track (black @0.38) + a left-anchored fill; FillColorFn keeps the fill
+        // on the live theme accent (the static White is only the build-time placeholder — no theme read while the
+        // plugin constructs). No label → just the track.
+        new BarElement(LinkProgressFrac, White) { Height = 5f, FillWidth = true, FillColorFn = () => AccentColor() },
+        LinkLine(() => _loc.T("mst.link.next"), LinkNextText),
         new ConditionalElement(() => LinkCountInSec() > 0,
             new TextElement(() => _loc.TFormat("mst.link.countIn", LinkCountInSec()), Emphasis: true, Align: TextAlign.Center, FontSize: 22)),
         new ConditionalElement(() => _lkPaused && _lkRoomSong != null,
             new TextElement(() => _loc.T("mst.link.paused"), Emphasis: true, Align: TextAlign.Center)),
         new ConditionalElement(() => LinkWarningText().Length > 0,
-            new TextElement(LinkWarningText, Color: Warn)),
-        new SeparatorElement(),
-        new RowElement(new HudElement[]
-        {
-            new CellElement(new ButtonElement(Label: () => "■ " + _loc.T("mst.link.stopPart"), OnClick: StopMyPart,
-                                              Enabled: () => _lkPartActive), Weight: 1f),
-            new CellElement(new ButtonElement(Label: () => _loc.T("mst.link.disconnect"), OnClick: () => EndLink("")), Weight: 1f),
-        }, Gap: 6f),
-    }, Gap: 8f);
+            new TextElement(LinkWarningText, Color: () => _services.Theme.Colors.Warning)));
+
+    // Muted label + value on one line (value ellipsized to the panel).
+    private HudElement LinkLine(Func<string> label, Func<string> value) => new RowElement(new HudElement[]
+    {
+        new CellElement(new TextElement(label, Color: () => MutedColor(), NoWrap: true) { Ellipsize = true }, Width: LinkLabelW),
+        new CellElement(new TextElement(value, Color: () => TextColor(), NoWrap: true) { Ellipsize = true }, Weight: 1f),
+    }, Gap: 6f);
 
     private string LinkPingText()
-        => !_lkOnline ? _loc.T("mst.link.reconnecting") : _lkPingMs >= 0 ? _loc.TFormat("mst.link.ping", _lkPingMs) : "";
+        => !_lkOnline ? _loc.T("mst.link.reconnecting") : _lkPingMs >= 0 ? _loc.TFormat("mst.link.pingHint", _lkPingMs) : "";
+
+    // "1:22 / 4:21" — blank with no song running.
+    private string LinkTimeText()
+        => _lkRoomSong == null ? "" : $"{Mmss(LinkPositionMs())} / {Mmss(_lkRoomSong.DurationMs)}";
 
     // "Piano · Acoustic" — toneId 0 / unknown → the instrument's default tone.
     private string LinkEquipName(int inst, int tone)

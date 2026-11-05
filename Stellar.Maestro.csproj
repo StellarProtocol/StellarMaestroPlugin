@@ -25,8 +25,16 @@
     <Compile Remove="Plugin.SweepCmd.cs" />
   </ItemGroup>
 
+  <!-- The unit-test project lives under tests/ with its own csproj; keep its sources (and its obj/ generated files) out
+       of the plugin assembly. -->
   <ItemGroup>
-    <!-- i18n P2: consumes IPluginServices.Localization (framework 2.1.0). -->
+    <Compile Remove="tests/**" />
+    <None Remove="tests/**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- i18n P2: consumes IPluginServices.Localization (framework 2.1.0). House-style UI (BubbleElement.FillColorFn,
+         SelectableElement.Bare, TextElement.Ellipsize) needs 2.26+; pinned to 2.28.1 with the Link players panel. -->
     <PackageReference Include="Stellar.Abstractions" Version="2.28.1" />
     <PackageReference Include="Stellar.Plugin.InteropRefs" Version="2.28.1" />
   </ItemGroup>

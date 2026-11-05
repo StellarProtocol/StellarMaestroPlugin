@@ -140,13 +140,15 @@ public sealed partial class Plugin
     // estimate of the game face — 120 cut it to "Gap between so…" in-game, so 140 leaves ~10 % headroom.
     private const float SliderLabelW = 140f;
     private const float SliderValueW = 50f;
-    // The round "?" button: a 24 px circle. Must be SQUARE: the first build used a 20 px strut, but the bold-12 "?"
-    // line is 22 px tall (measured in-game 2026-11-06: the button drew 20 wide × 22 tall, an oval). Like the pill
-    // labels, the "?" sat high in that line (ink ≈ 5..14 of 22: 5 above, 7 below), so it goes under a 2 px spacer
-    // (HelpTextDrop): 2 + 22 = 24 = the side, which moves the glyph ~1 px down within a centred 24 px circle.
-    private const float HelpTextDrop = 2f;
-    private const float HelpLineH    = 22f;
-    private const float HelpSize     = HelpLineH + HelpTextDrop;
+    // The round "?" button: a 24 px circle. It must stay SQUARE, so NOTHING inside may be taller than the side:
+    //   • a 20 px strut + the bold-12 "?" (a 22 px TMP line) drew 20 × 22 (in-game 2026-11-06) — an oval;
+    //   • a 2 px spacer + that line in a Column drew 24 × 26 (in-game, build 256e7e3) — the stacked content
+    //     outgrew the 24 px strut (the line box measures taller than 22 there), and the bubble grew with it.
+    // So the content is exactly [24 px strut, the "?" text] side by side in one Row (Row height = the taller of the
+    // two = 24, as the text line is ≤ 24), with no spacer stacked on the text. The glyph sat ~1 px high in its line
+    // box; instead of nudging it with a spacer, CenterGlyphs centres what is DRAWN (TMP Midline) inside the text box,
+    // and the Row centres the box — so the "?" sits in the middle of the circle at any line height ≤ the side.
+    private const float HelpSize = 24f;
 
     // The "?" button: a small round Neutral button (24 px circle, bold-12 "?"), lighter on hover, tinted with the accent
     // while its tip is open. Bare selectable = no padding / wash of its own, so the circle is exactly HelpSize and the
@@ -161,13 +163,9 @@ public sealed partial class Plugin
         => new BubbleElement(new SelectableElement(
             new RowElement(new HudElement[]
             {
-                new SpacerElement(0f, HelpSize),   // height strut; the label box below sets the width
-                new ColumnElement(new HudElement[]
-                {
-                    new SpacerElement(0f, HelpTextDrop),
-                    new TextElement(() => "?", Color: () => NeutralText(), Width: HelpSize, Align: TextAlign.Center,
-                        NoWrap: true, FontSize: 12) { Bold = true },
-                }, Gap: 0.01f),
+                new SpacerElement(0f, HelpSize),   // height strut = the side; the label box below sets the width
+                new TextElement(() => "?", Color: () => NeutralText(), Width: HelpSize, Align: TextAlign.Center,
+                    NoWrap: true, FontSize: 12) { Bold = true, CenterGlyphs = true },
             }, Gap: 0.01f, Justify: RowJustify.Center),
             OnClick: () => { })                       // real work is in OnClickWithRect (needs the button's rect)
             {

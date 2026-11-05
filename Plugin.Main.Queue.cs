@@ -7,7 +7,7 @@ namespace Stellar.Maestro;
 
 // The main window's QUEUE panel (approved design 2026-11-06): playlist Pill dropdown + New / Rename / ✕ (delete, with
 // the house confirmation), the song list (raised 26 px tiles 2 px apart, exactly QueueRowsVisible rows then scrolling),
-// the Auto next / Loop / Shuffle chips, and move ▲ ▼ + "Add songs". Queue logic itself is Plugin.Playlist.cs.
+// and the one-row footer (move ▲ ▼, Auto next / Loop / Shuffle icon toggles, "+ Add"). Queue logic is Plugin.Playlist.cs.
 public sealed partial class Plugin
 {
     private const int   QueueRowsVisible = 8;
@@ -39,7 +39,8 @@ public sealed partial class Plugin
         new ConditionalElement(() => _confirmDelete, BuildDeleteConfirm(), BuildQueueList()),
         BuildQueueControls());
 
-    private string QueueHint() => Active.Songs.Count == 0 ? "" : SongCountText(Active.Songs.Count);
+    private string QueueHint() => _footerHintKey != null ? FooterHint()
+        : Active.Songs.Count == 0 ? "" : SongCountText(Active.Songs.Count);
 
     // ── playlist row ──────────────────────────────────────────────────────────────────────────────────────────────
     private HudElement BuildPlaylistRow() => new RowElement(new HudElement[]
@@ -150,30 +151,51 @@ public sealed partial class Plugin
         return pool;
     }
 
-    // ── under the list: chips row, then move + Add songs ──────────────────────────────────────────────────────────
-    // Each chip has a FIXED width = its longest label in any language and (Loop) any state + chip padding + margin,
-    // so cycling Loop Off → All → One never resizes it. Measured with the Windows UI fonts at bold 14 (Arial / Yu
-    // Gothic / Malgun / Leelawadee — estimates of the game face): Auto next 67 (en/fil), Loop 100 (th "วนซ้ำ: เพลงเดียว"),
-    // Shuffle 70 (ja "シャッフル"). 84 + 116 + 84 + the arrows (~38 each) + "+ Tambah lagu" (~117) + gaps ≈ 500 > the
-    // 416 px panel row, so the chips get their own row and ▲ ▼ + Add songs sit right-aligned on the next.
-    private const float ChipAutoW    = 84f;
-    private const float ChipLoopW    = 116f;
-    private const float ChipShuffleW = 84f;
+    // ── footer: ONE row (user-approved 2026-11-06): [▲] [▼] · spacer · [auto next] [loop] [shuffle] [+ Add] ─────────
+    // The three play-mode toggles are icon chips (Plugin.Style.Blocks.cs IconChip). Loop cycles Off → All → One. The
+    // toolkit has no tooltip (none in SDK 2.28.1 / 2.29.0-local), so while the pointer is on a toggle its plain-words
+    // state ("Loop: all songs") replaces "N songs" in the QUEUE caption hint, and reverts on hover-out.
+    private string? _footerHintKey;   // which toggle is hovered: "auto" / "loop" / "shuffle"; null = none
 
-    private HudElement BuildQueueControls() => new ColumnElement(new HudElement[]
+    private void FooterHover(string key, bool over)
     {
-        new RowElement(new HudElement[]
+        if (over) _footerHintKey = key;
+        else if (_footerHintKey == key) _footerHintKey = null;
+    }
+
+    private string FooterHint() => _footerHintKey switch
+    {
+        "auto"    => _loc.T(_autoAdvance ? "mst.q.hint.autoOn" : "mst.q.hint.autoOff"),
+        "loop"    => _loc.T(_loopMode == 1 ? "mst.q.hint.loopAll" : _loopMode == 2 ? "mst.q.hint.loopOne" : "mst.q.hint.loopOff"),
+        "shuffle" => _loc.T(_shuffle ? "mst.q.hint.shuffleOn" : "mst.q.hint.shuffleOff"),
+        _         => "",
+    };
+
+    private HudElement BuildQueueControls()
+    {
+        var autoHover = new HoverFlag();
+        var loopHover = new HoverFlag();
+        var shufHover = new HoverFlag();
+        void OnAuto(bool o) => FooterHover("auto", o);
+        void OnLoop(bool o) => FooterHover("loop", o);
+        void OnShuf(bool o) => FooterHover("shuffle", o);
+        return new RowElement(new HudElement[]
         {
-            ChipToggle(() => _loc.T("mst.pl.autoAdvance"), () => _autoAdvance, ToggleAutoAdvance, ChipAutoW),
-            ChipToggle(() => _loc.T("mst.pl.loop") + ": " + LoopName(), () => _loopMode != 0, CycleLoop, ChipLoopW),
-            ChipToggle(() => _loc.T("mst.pl.shuffle"), () => _shuffle, ToggleShuffle, ChipShuffleW),
-        }, Gap: 6f),
-        new RowElement(new HudElement[]
-        {
-            new SpacerElement(0f),
             GlyphPill(() => "▲", () => MoveQueue(-1), GlyphLabelW, () => _queueSel > 0 && _queueSel < Active.Songs.Count),
             GlyphPill(() => "▼", () => MoveQueue(+1), GlyphLabelW, () => _queueSel >= 0 && _queueSel < Active.Songs.Count - 1),
-            PrimaryButton(() => _loc.T("mst.pl.addSongs"), OpenLibrary),
-        }, Gap: 6f),
-    }, Gap: 6f);
+            new SpacerElement(0f),
+            new ConditionalElement(() => _autoAdvance,
+                IconChip("icon-autonext-on.png",  true,  autoHover, ToggleAutoAdvance, OnAuto),
+                IconChip("icon-autonext-off.png", false, autoHover, ToggleAutoAdvance, OnAuto)),
+            new ConditionalElement(() => _loopMode == 0,
+                IconChip("icon-loop-off.png", false, loopHover, CycleLoop, OnLoop),
+                new ConditionalElement(() => _loopMode == 1,
+                    IconChip("icon-loop-on.png",     true, loopHover, CycleLoop, OnLoop),
+                    IconChip("icon-loop-one-on.png", true, loopHover, CycleLoop, OnLoop))),
+            new ConditionalElement(() => _shuffle,
+                IconChip("icon-shuffle-on.png",  true,  shufHover, ToggleShuffle, OnShuf),
+                IconChip("icon-shuffle-off.png", false, shufHover, ToggleShuffle, OnShuf)),
+            PrimaryButton(() => _loc.T("mst.pl.add"), OpenLibrary),
+        }, Gap: 6f);
+    }
 }

@@ -157,15 +157,31 @@ public sealed partial class Plugin
         FillColorFn = () => selected() ? AccentColor() : Transparent, CornerRadius = 2f, PaddingX = 0f, PaddingY = 0f,
     };
 
-    // ── clickable chip ────────────────────────────────────────────────────────────────────────────────────────────
-    // A StatusChip that toggles/cycles on click: a Bare selectable (no tint / padding of its own) around the chip, so
-    // the on/off geometry stays the chip's; the hover is a stronger chip wash (round, like the chip).
-    private HudElement ChipToggle(Func<string> label, Func<bool> on, Action onClick, float width = ChipWidth)
+    // ── icon chip (play-mode toggles) ─────────────────────────────────────────────────────────────────────────────
+    // ONE state of an icon toggle: a 36×28 round-ended chip (radius 14) with an 18 px icon centred. `green` = the house
+    // "on" chip wash (StatusGreen @ ChipWashAlpha), else the muted chip wash; hover adds 0.12 to the wash, so it keeps
+    // the chip's shape. ImageElement loads its picture ONCE, so the caller swaps COMPLETE chips with a ConditionalElement
+    // per state (same size every state → nothing moves) and passes the same HoverFlag to all of a toggle's states.
+    private const float IconChipW     = 36f;
+    private const float IconChipH     = 28f;
+    private const float IconChipGlyph = 18f;
+
+    private HudElement IconChip(string png, bool green, HoverFlag hover, Action onClick, Action<bool> onHover)
     {
-        var hover = new HoverFlag();
-        return new SelectableElement(
-            StatusChip(label, () => on() ? StatusGreen : (ColorRgba?)null, width, () => hover.On), OnClick: onClick)
-            { Bare = true, OnHover = over => hover.On = over };
+        float pad = (IconChipW - IconChipGlyph) / 2f;
+        return new BubbleElement(new SelectableElement(new RowElement(new HudElement[]
+            {
+                new SpacerElement(pad, IconChipH),
+                new ImageElement(() => CachedPng(png), (int)IconChipGlyph, (int)IconChipGlyph),
+                new SpacerElement(pad, IconChipH),
+            }, Gap: 0.01f, Justify: RowJustify.Center),
+            OnClick: onClick)
+            { Bare = true, OnHover = over => { hover.On = over; onHover(over); } })
+        {
+            FillColorFn = () => (green ? StatusGreen : MutedColor()) with
+                { A = (green ? ChipWashAlpha : 0.15f) + (hover.On ? 0.12f : 0f) },
+            CornerRadius = IconChipH / 2f, PaddingX = 0f, PaddingY = 0f,
+        };
     }
 
     // ── icon-only ✕ ───────────────────────────────────────────────────────────────────────────────────────────────

@@ -122,7 +122,6 @@ public sealed partial class Plugin
     private void SetShuffle(bool v)     { _shuffle = v;     _cfg.Set<bool>("shuffle", v);      _cfg.Save(); }
     private void CycleLoop()            { _loopMode = (_loopMode + 1) % 3; _cfg.Set<int>("loop_mode", _loopMode); _cfg.Save(); }
     private void SetGap(int v)          { _gapSec = Math.Clamp(v, 0, 15); _cfg.Set<int>("gap_sec", _gapSec); _cfg.Save(); }
-    private string LoopName() => _loopMode == 1 ? _loc.T("mst.loop.all") : _loopMode == 2 ? _loc.T("mst.loop.one") : _loc.T("mst.loop.off");
 
     // ---- playback ----
     private void PlayQueueIndex(int i)

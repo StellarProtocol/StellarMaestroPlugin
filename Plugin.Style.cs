@@ -233,18 +233,12 @@ public sealed partial class Plugin
     private const float ChipStrutHeight = 22f;
     private const float ChipRadius      = (ChipStrutHeight + 2f) / 2f;   // half the 24 px chip → round ends
 
-    // `hovered` (clickable chips): the wash gets a little stronger, so the hover keeps the chip's round shape.
-    private HudElement StatusChip(Func<string> label, Func<ColorRgba?> color, float width = ChipWidth,
-        Func<bool>? hovered = null)
-    {
-        float Wash(float a) => hovered != null && hovered() ? a + 0.12f : a;
-        return new ConditionalElement(
-            () => color() != null,
-            ChipPill(LiftBold(new TextElement(label, Color: () => color() ?? MutedColor(), Align: TextAlign.Center, NoWrap: true) { Bold = true }),
-                     () => (color() ?? MutedColor()) with { A = Wash(ChipWashAlpha) }, width),
-            ChipPill(new TextElement(label, Color: () => MutedColor(), Align: TextAlign.Center, NoWrap: true),
-                     () => MutedColor() with { A = Wash(0.15f) }, width));
-    }
+    private HudElement StatusChip(Func<string> label, Func<ColorRgba?> color, float width = ChipWidth) => new ConditionalElement(
+        () => color() != null,
+        ChipPill(LiftBold(new TextElement(label, Color: () => color() ?? MutedColor(), Align: TextAlign.Center, NoWrap: true) { Bold = true }),
+                 () => (color() ?? MutedColor()) with { A = ChipWashAlpha }, width),
+        ChipPill(new TextElement(label, Color: () => MutedColor(), Align: TextAlign.Center, NoWrap: true),
+                 () => MutedColor() with { A = 0.15f }, width));
 
     private static HudElement ChipPill(HudElement text, Func<ColorRgba> fill, float width) => new CellElement(
         new BubbleElement(new RowElement(new HudElement[]

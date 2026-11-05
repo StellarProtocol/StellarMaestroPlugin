@@ -51,6 +51,14 @@
     <EmbeddedResource Include="Resources/icon-link.png" LogicalName="Stellar.Maestro.icon-link.png" />
     <EmbeddedResource Include="Resources/icon-preview.png" LogicalName="Stellar.Maestro.icon-preview.png" />
     <EmbeddedResource Include="Resources/icon-settings.png" LogicalName="Stellar.Maestro.icon-settings.png" />
+    <!-- Queue footer play-mode toggles (on = green, off = grey; loop has a separate "one song" icon). -->
+    <EmbeddedResource Include="Resources/icon-autonext-on.png" LogicalName="Stellar.Maestro.icon-autonext-on.png" />
+    <EmbeddedResource Include="Resources/icon-autonext-off.png" LogicalName="Stellar.Maestro.icon-autonext-off.png" />
+    <EmbeddedResource Include="Resources/icon-loop-on.png" LogicalName="Stellar.Maestro.icon-loop-on.png" />
+    <EmbeddedResource Include="Resources/icon-loop-off.png" LogicalName="Stellar.Maestro.icon-loop-off.png" />
+    <EmbeddedResource Include="Resources/icon-loop-one-on.png" LogicalName="Stellar.Maestro.icon-loop-one-on.png" />
+    <EmbeddedResource Include="Resources/icon-shuffle-on.png" LogicalName="Stellar.Maestro.icon-shuffle-on.png" />
+    <EmbeddedResource Include="Resources/icon-shuffle-off.png" LogicalName="Stellar.Maestro.icon-shuffle-off.png" />
     <EmbeddedResource Include="Lang/en.json" LogicalName="Stellar.Maestro.Lang.en.json" />
     <EmbeddedResource Include="Lang/ja.json" LogicalName="Stellar.Maestro.Lang.ja.json" />
     <EmbeddedResource Include="Lang/th.json" LogicalName="Stellar.Maestro.Lang.th.json" />

@@ -71,8 +71,8 @@ public sealed partial class Plugin
     }, Gap: 8f);
 
     // One fixed-width top cell whose panel stretches to the row's height, so ROOM and NOW PLAYING are equally tall
-    // while NOW PLAYING grows (count-in / Paused / warning lines). A Row never stretches a child's height on its own
-    // (childForceExpandHeight = false); a Fill Conditional is the one element that reports flexibleHeight, which makes
+    // (NOW PLAYING is the taller one: its status line is always present — LinkStatusLine). A Row never stretches a
+    // child's height on its own (childForceExpandHeight = false); a Fill Conditional is the one element that reports flexibleHeight, which makes
     // the Row grow the cell to the row height and the cell + Cond stretch the bubble down to it (always-true When).
     private static HudElement LinkTopPanel(HudElement panel)
         => new CellElement(new ConditionalElement(() => true, panel, Fill: true), Width: LinkTopPanelW);
@@ -88,8 +88,7 @@ public sealed partial class Plugin
         }, Gap: 6f),
         LinkLine(() => _loc.T("mst.link.myPart"), LinkPartText));
 
-    // NOW PLAYING: title (or "Waiting for the room…") / thin progress bar / Next, then the count-in, Paused and
-    // warning lines when they apply.
+    // NOW PLAYING: title (or "Waiting for the room…") / thin progress bar / Next / ONE always-present status line.
     private HudElement BuildLinkNowPlayingPanel() => SectionPanel(() => _loc.T("mst.link.cap.nowPlaying"), LinkTimeText,
         new ConditionalElement(() => _lkRoomSong?.Title is { Length: > 0 },
             new TextElement(() => _lkRoomSong?.Title ?? "", Color: () => TextColor(), NoWrap: true) { Bold = true, Ellipsize = true },
@@ -99,12 +98,28 @@ public sealed partial class Plugin
         // plugin constructs). No label → just the track.
         new BarElement(LinkProgressFrac, White) { Height = 5f, FillWidth = true, FillColorFn = () => AccentColor() },
         LinkLine(() => _loc.T("mst.link.next"), LinkNextText),
-        new ConditionalElement(() => LinkCountInSec() > 0,
-            new TextElement(() => _loc.TFormat("mst.link.countIn", LinkCountInSec()), Emphasis: true, Align: TextAlign.Center, FontSize: 22)),
-        new ConditionalElement(() => _lkPaused && _lkRoomSong != null,
-            new TextElement(() => _loc.T("mst.link.paused"), Emphasis: true, Align: TextAlign.Center)),
-        new ConditionalElement(() => LinkWarningText().Length > 0,
-            new TextElement(LinkWarningText, Color: () => _services.Theme.Colors.Warning)));
+        LinkStatusLine());
+
+    // The status line: ALWAYS present at a fixed height, so the window never jumps when the count-in starts / ends, the
+    // room pauses or a warning appears (house rule: fixed geometry). It used to be three Conditional lines — one of
+    // them a 22 px count-in number — that each added height while they applied. Shows the highest priority of:
+    //   1. count-in "Starting in {n}…" (bold, accent)  2. "Paused" (bold, muted)  3. LinkWarningText (Warning)  4. empty.
+    // A 0-width height strut pins the row (width 0 + height > 0 = non-flexible strut, the chip recipe): bold text is
+    // taller than regular, and an empty line would otherwise collapse to 0. NoWrap + Ellipsize keeps a long warning
+    // (e.g. "Switching to …") on that one line instead of wrapping to two.
+    private const float LinkStatusStrutHeight = 22f;   // = ChipStrutHeight: holds a bold-14 line
+
+    private HudElement LinkStatusLine() => new RowElement(new HudElement[]
+    {
+        new SpacerElement(0f, LinkStatusStrutHeight),
+        new CellElement(new ConditionalElement(() => LinkCountInSec() > 0,
+            new TextElement(() => _loc.TFormat("mst.link.countIn", LinkCountInSec()), Color: () => AccentColor(), NoWrap: true)
+                { Bold = true, Ellipsize = true },
+            new ConditionalElement(() => _lkPaused && _lkRoomSong != null,
+                new TextElement(() => _loc.T("mst.link.paused"), Color: () => MutedColor(), NoWrap: true) { Bold = true, Ellipsize = true },
+                new TextElement(LinkWarningText, Color: () => _services.Theme.Colors.Warning, NoWrap: true) { Ellipsize = true })),
+            Weight: 1f),
+    }, Gap: 0.01f);
 
     // Muted label + value on one line (value ellipsized to the panel).
     private HudElement LinkLine(Func<string> label, Func<string> value) => new RowElement(new HudElement[]

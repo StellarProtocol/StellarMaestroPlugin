@@ -140,8 +140,13 @@ public sealed partial class Plugin
     private string PreviewCardText() => _previewSynth.IsPlaying || _previewSynth.IsPaused
         ? _loc.T("mst.hub.previewing") : _loc.T("mst.hub.previewSub");
 
+    // Short enough for the half-width card in every language: "Sync on" at the default tempo, "75% · Sync on" otherwise
+    // (the old "Tempo 100% · Sync on" was cut off in-game).
     private string SettingsCardText()
-        => _loc.TFormat("mst.hub.settingsSub", _bandTempoPct, _loc.T(_bandNetPrebuffer ? "mst.on" : "mst.off"));
+    {
+        string sync = _loc.T(_bandNetPrebuffer ? "mst.hub.syncOn" : "mst.hub.syncOff");
+        return _bandTempoPct == 100 ? sync : _loc.TFormat("mst.hub.settingsSub", _bandTempoPct, sync);
+    }
 
     // ── opening child windows ─────────────────────────────────────────────────────────────────────────────────────
     // House rule (Stellar-Design-Language §5): a child opens centred on the window it was opened from, and in front.

@@ -13,7 +13,8 @@ public sealed partial class Plugin
     private bool   _bandEnsembleSync;
     private bool   _bandEnsembleMatchTempo = false;
     private bool   _ensembleWaiting;    // Play was armed while not yet in an ensemble — hold until one starts
-    private int    _ensembleWaitIdx;    // queue index to play once the ensemble goes live
+    private int    _ensembleWaitIdx;    // queue index to play once the ensemble goes live …
+    private PlaylistDto? _ensembleWaitList;   // … in this playlist (the one Play was pressed in)
     private double _ensWaitAccumMs;     // throttle for the "in ensemble yet?" poll
     private bool   _bandAutoAcceptEnsemble;   // auto-accept incoming BandEnsemble invites
     private double _autoAcceptHealAccumMs;    // throttle for the self-heal "is the listener still installed?" poll
@@ -77,7 +78,7 @@ public sealed partial class Plugin
         if (EnsembleActive())
         {
             _ensembleWaiting = false;
-            PlayQueueIndex(_ensembleWaitIdx);
+            PlayFrom(_ensembleWaitList ?? Active, _ensembleWaitIdx);
         }
     }
 

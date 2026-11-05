@@ -121,7 +121,7 @@ public sealed partial class Plugin
             int  Idx()     => _queueWindowFirst + slot;
             bool Valid()   => Idx() >= 0 && Idx() < Active.Songs.Count;
             bool Sel()     => Valid() && Idx() == _queueSel;
-            bool Playing() => Valid() && Idx() == _nowPlaying;
+            bool Playing() => Valid() && Idx() == NowPlayingInView;   // ▶ only when viewing the playing playlist
             string? Id()   => Valid() ? $"{_plIdx}:{Idx()}:{Active.Songs[Idx()]}" : null;
 
             pool[s] = ListSlot(ListTile(new RowElement(new HudElement[]

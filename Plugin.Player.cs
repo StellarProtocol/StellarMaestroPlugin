@@ -89,7 +89,9 @@ public sealed partial class Plugin
     }
 
     // A song is "selected to switch" when the highlighted queue row isn't the one currently playing.
-    private bool QueueSelectDiffers() => _queueSel >= 0 && _queueSel != _nowPlaying;
+    // A song is "selected to switch" when the selected row (viewed playlist) isn't the playing song — including any
+    // selection in a playlist other than the playing one.
+    private bool QueueSelectDiffers() => QueueCursor.SelectionDiffers(_queueSel, _nowPlaying, ViewingPlaying);
 
     // Plain words, no ▶ / ▮▮ prefix: the label sits in a bold pill, and the bold face has no Geometric Shapes glyphs.
     private string PlayPauseLabel()
@@ -117,7 +119,7 @@ public sealed partial class Plugin
         if (_bandPlayer.IsPaused) { _bandPlayer.Resume(); return; }
 
         if (Active.Songs.Count == 0) { SetBandStatus(_loc.T("mst.status.queueEmpty"), true); return; }
-        PlayQueueIndex(_queueSel >= 0 ? _queueSel : (_nowPlaying >= 0 ? _nowPlaying : 0));
+        PlayQueueIndex(_queueSel >= 0 ? _queueSel : (NowPlayingInView >= 0 ? NowPlayingInView : 0));
     }
 
     private void StopPlayback() { _gapRemainMs = -1; _ensembleWaiting = false; _bandPlayer.StopReset(); }

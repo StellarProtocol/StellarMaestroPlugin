@@ -80,7 +80,7 @@ public sealed partial class Plugin
         hasNext:          NextQueueIndex() >= 0);
 
     private int NextQueueIndex() => _bandPlayer.IsPlaying || _bandPlayer.IsPaused
-        ? QueueNext.Index(_nowPlaying, Active.Songs.Count, _loopMode, _shuffle, _autoAdvance) : -1;
+        ? QueueNext.Index(_nowPlaying, PlayingSongs.Count, _loopMode, _shuffle, _autoAdvance) : -1;   // the PLAYING list
 
     private string MainLineText()
     {
@@ -93,7 +93,7 @@ public sealed partial class Plugin
             case MainLineKind.Message:         return _bandMidiStatus;
             case MainLineKind.Next:
                 int n = NextQueueIndex();
-                return n >= 0 ? _loc.TFormat("mst.next", System.IO.Path.GetFileNameWithoutExtension(Active.Songs[n])) : "";
+                return n >= 0 ? _loc.TFormat("mst.next", System.IO.Path.GetFileNameWithoutExtension(PlayingSongs[n])) : "";
             default:                           return "";
         }
     }

@@ -58,6 +58,37 @@ internal static class QueueNext
     }
 }
 
+// The playing song's index ("cursor") in the PLAYING playlist, which is tracked separately from the playlist being
+// VIEWED in the queue (switching the dropdown never touches playback). Edits apply to the viewed playlist; they only
+// move the cursor when the viewed playlist IS the playing one (`sameList`).
+internal static class QueueCursor
+{
+    // After removing row `removed` from the viewed playlist: the removed song itself → -1 (no longer in the list).
+    public static int AfterRemove(int nowPlaying, int removed, bool sameList)
+    {
+        if (!sameList || nowPlaying < 0) return nowPlaying;
+        if (nowPlaying == removed) return -1;
+        return nowPlaying > removed ? nowPlaying - 1 : nowPlaying;
+    }
+
+    // After swapping rows `a` and `b` of the viewed playlist (▲ / ▼).
+    public static int AfterSwap(int nowPlaying, int a, int b, bool sameList)
+    {
+        if (!sameList) return nowPlaying;
+        return nowPlaying == a ? b : nowPlaying == b ? a : nowPlaying;
+    }
+
+    // Row index that shows the green "▶" in the viewed list: only when viewing the playing playlist.
+    public static int MarkerInView(int nowPlaying, bool viewingPlaying) => viewingPlaying ? nowPlaying : -1;
+
+    // ◀◀ within the playing playlist: the previous song, wrapping from the first (or "none") to the last.
+    public static int Prev(int nowPlaying, int count) => count <= 0 ? -1 : nowPlaying <= 0 ? count - 1 : nowPlaying - 1;
+
+    // Is the viewed-list selection a DIFFERENT song from the one playing? Then Play switches to it (and its playlist).
+    public static bool SelectionDiffers(int selected, int nowPlaying, bool viewingPlaying)
+        => selected >= 0 && !(viewingPlaying && selected == nowPlaying);
+}
+
 // The Maestro Link hub card's status.
 internal enum LinkCardKind { NotInRoom, Joining, InRoom, Reconnecting }
 

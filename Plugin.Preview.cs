@@ -84,7 +84,7 @@ public sealed partial class Plugin
 
     private string CurrentPreviewSongPath()
     {
-        int i = _queueSel >= 0 ? _queueSel : (_nowPlaying >= 0 ? _nowPlaying : 0);
+        int i = _queueSel >= 0 ? _queueSel : (NowPlayingInView >= 0 ? NowPlayingInView : 0);
         if (i < 0 || i >= Active.Songs.Count) return "";
         var path = Path.Combine(BandMidiDir(), Active.Songs[i]);
         return File.Exists(path) ? path : "";
@@ -147,7 +147,7 @@ public sealed partial class Plugin
     // Gather the selected queue song's sibling stems and start the local game-sound preview.
     private void PreviewCurrentSong()
     {
-        int i = _queueSel >= 0 ? _queueSel : (_nowPlaying >= 0 ? _nowPlaying : 0);
+        int i = _queueSel >= 0 ? _queueSel : (NowPlayingInView >= 0 ? NowPlayingInView : 0);
         if (i < 0 || i >= Active.Songs.Count) { SetBandStatus(_loc.T("mst.status.queueEmptyPreview"), true); return; }
         var path = Path.Combine(BandMidiDir(), Active.Songs[i]);
         if (!File.Exists(path)) { SetBandStatus(_loc.TFormat("mst.status.missingFile", Active.Songs[i]), true); return; }

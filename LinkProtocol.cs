@@ -108,3 +108,13 @@ internal static class LinkProtocol
     public static string Ack(string of, string? songId, bool ok, string? error)
         => JsonSerializer.Serialize(new { t = "ack", of, songId, ok, error });
 }
+
+// The NOW PLAYING "Next" title. Sources, latest arrival wins: the `next` message ({t:"next", title: string|null},
+// server PR #8 — sent whenever the room's next song changes) vs. the `next` field a `play` / `welcome.paused` carries.
+// A play / welcome resets the live value (`live` false), so a server that never sends `next` behaves exactly as before:
+// the running song's `next`, or with nothing running the prepared (upcoming) song's title. null/empty → "—" (caller).
+internal static class LinkNext
+{
+    public static string? Select(bool live, string? liveTitle, bool running, string? runningNext, string? prepTitle)
+        => live ? liveTitle : running ? runningNext : prepTitle;
+}

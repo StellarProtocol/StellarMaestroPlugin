@@ -22,6 +22,7 @@ namespace Stellar.Maestro;
 // Partials: Plugin.Link.cs (session + status) · Plugin.Link.Song.cs (prepare/play/stop, part lifecycle) ·
 //           Plugin.Link.Settings.cs (linked overrides + status helpers) ·
 //           Plugin.Link.Equip.cs (re-equip recipe) · Plugin.Link.Ui.cs (join form + status view) ·
+//           Plugin.Link.Players.cs (room roster panel) · Plugin.Link.Style.cs (house-style kit) ·
 //           Plugin.Link.Clock.cs (game server clock).
 public sealed partial class Plugin
 {
@@ -35,6 +36,7 @@ public sealed partial class Plugin
     private string _lkCode = "";           // join-form code (persisted as the last code)
     private string _lkErrorKey = "";       // localized error line on the join form ("" = none)
     private string _lkRoomCode = "";
+    private string _lkRoomName = "";       // welcome.roomName (shown after the code; "" = not sent)
     private string _lkPlayerId = "", _lkClientToken = "";
     private Uri    _lkApiBase = new("https://maestro.stellarresonance.app/api/");
     private readonly Stopwatch _lkHelloClock = new();
@@ -54,6 +56,7 @@ public sealed partial class Plugin
     private void InitLink()
     {
         _lkCode = _cfg.Get<string>("link_last_code", "") ?? "";
+        InitLinkPlayers();
         _lkMainThread = Environment.CurrentManagedThreadId;
         _services.Framework.Update += LinkTick;
         _services.ClientState.Logout += OnLinkLogout;
@@ -91,6 +94,7 @@ public sealed partial class Plugin
         _lkPhase  = LinkPhase.Connecting;
         _lkOnline = false;
         _lkPingMs = -1;
+        ClearLinkNext();
         _lk = new LinkClient(ws, hello);
         _lk.Start();
         _services.Log.Info($"[MaestroLink] joining {_lkCode} via {ws} as '{name}'");
@@ -147,6 +151,9 @@ public sealed partial class Plugin
         _lkOnline = false;
         _lkErrorKey = errorKey;
         _lkLogoutPending = false;
+        ClearLinkPlayers();   // the roster belongs to this session (kept only across a reconnect)
+        ClearLinkNext();
+        _lkRoomName = "";
         if (wasLinked)
         {
             try { StopLinkedPart(); }
@@ -277,7 +284,8 @@ public sealed partial class Plugin
         string t = LinkSettings.Str(m, "t") ?? "";
         switch (t)
         {
-            case "welcome":  OnLinkWelcome(m); break;
+            // welcome / play carry their own `next` → they reset the live `next` (latest arrival wins; LinkNext).
+            case "welcome":  ClearLinkNext(); OnLinkWelcome(m); break;
             case "error":    EndLink(ErrorKeyFor(LinkSettings.Str(m, "code") ?? "")); break;
             case "closed":   EndLink(ClosedKeyFor(LinkSettings.Str(m, "reason") ?? "")); break;
             case "settings":
@@ -285,7 +293,7 @@ public sealed partial class Plugin
                     OnLinkSettings(LinkSettings.Parse(s));   // `apply` ignored: settings never equip (§7.2)
                 break;
             case "prepare":  { var song = LinkSong.Parse(m); if (song != null) OnLinkPrepare(song); } break;
-            case "play":     { var song = LinkSong.Parse(m); if (song != null) OnLinkPlay(song); } break;
+            case "play":     ClearLinkNext(); { var song = LinkSong.Parse(m); if (song != null) OnLinkPlay(song); } break;
             case "stop":     // scope part = our stem re-assigned away; room (or missing) = stop, or with paused:true = pause
                 if (LinkSettings.Str(m, "scope") == "part") OnLinkStopPart();
                 else OnLinkStop(LinkSettings.Bool(m, "paused") == true, LinkSettings.Int(m, "positionMs") ?? 0);
@@ -294,6 +302,8 @@ public sealed partial class Plugin
                 if (LinkSettings.Int(m, "instrumentId") is int ei) OnLinkEquip(ei, LinkSettings.Int(m, "toneId"), LinkSettings.Str(m, "playRange"));
                 else SendAck("equip", null, false, "bad_request");
                 break;
+            case "players":  OnLinkPlayers(m); break;   // room roster (Plugin.Link.Players.cs)
+            case "next":     _lkNextLive = true; _lkNextTitle = LinkSettings.Str(m, "title"); break;   // live next title
             case "ping":     { var p = LinkSettings.Int(m, "pingMs"); if (p != null) _lkPingMs = p.Value; } break;   // RTT from the previous pong
         }
     }
@@ -305,6 +315,7 @@ public sealed partial class Plugin
         _lkOnline      = true;
         _lkPlayerId    = LinkSettings.Str(m, "playerId") ?? "";
         _lkClientToken = LinkSettings.Str(m, "clientToken") ?? "";
+        if (LinkSettings.Str(m, "roomName") is { } rn) _lkRoomName = rn;
         _lkLastStatus  = "";   // force a status right away
         RefreshLinkClock();    // before the welcome song (late-join math) and the first status
 
@@ -312,6 +323,7 @@ public sealed partial class Plugin
         {
             _lkPhase = LinkPhase.Linked;
             _lkRoomCode = _lkCode;
+            ClearLinkPlayers();   // fresh room → "Loading players…" until its first `players`
             _cfg.Set<string>("link_last_code", _lkCode); _cfg.Save();
             // Joining: local playback stops, the normal Maestro windows give way to the Link status view, and the
             // player is put into linked mode (buffered, tempo 100 %, keep-base).

@@ -68,7 +68,9 @@ public sealed partial class Plugin : IStellarPlugin
         _libraryWindow  = RegisterWindow("maestro.library",  _loc.T("mst.win.library"),  4, BuildLibraryRoot());
         _previewWindow  = RegisterWindow("maestro.preview",  _loc.T("mst.win.preview"),  5, BuildPreviewRoot());
         _tipWindow      = RegisterTipWindow();
-        _linkWindow     = RegisterWindow("maestro.link",     _loc.T("mst.win.link"),     2, BuildLinkRoot(), 420f);
+        // 540 wide for the players table (Plugin.Link.Players.cs column math). A GlassMenu window that isn't Resizable
+        // takes its width from this spec at mount — a saved layout restores position only — so no stale 420 can win.
+        _linkWindow     = RegisterWindow("maestro.link",     _loc.T("mst.win.link"),     2, BuildLinkRoot(), 540f);
         var window = _mainWindow = RegisterWindow("maestro.main", _loc.T("mst.title"), 0, BuildBandRoot());
         // Title stays the fixed literal "Maestro" — the stable pin-identity key (ILauncher.cs:49-50) —
         // so a pinned tile survives a language change; TitleProvider carries the live-localized display.

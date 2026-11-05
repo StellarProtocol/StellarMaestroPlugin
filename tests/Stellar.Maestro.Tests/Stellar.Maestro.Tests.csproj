@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Unit tests for the plugin's PURE logic (no game / framework types). The sources under test are compiled in
+       directly instead of referencing Stellar.Maestro.csproj: the plugin assembly pulls the IL2CPP interop references
+       and a deploy step, neither of which a test run needs. Run: dotnet test tests/Stellar.Maestro.Tests -->
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>Stellar.Maestro.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="../../LinkProtocol.cs" Link="Src/LinkProtocol.cs" />
+    <Compile Include="../../LinkPlayers.cs" Link="Src/LinkPlayers.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.6.3" />
+    <PackageReference Include="xunit" Version="2.4.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.4.5" />
+  </ItemGroup>
+</Project>

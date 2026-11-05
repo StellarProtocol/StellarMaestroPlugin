@@ -4,6 +4,7 @@
   "mst.win.library": "Maestro · 라이브러리",
   "mst.win.preview": "Maestro · 미리 듣기",
   "mst.win.help": "Maestro · 도움말",
+  "mst.tip.help": "도움말",
 
   "mst.hdr.playing": "● 재생 중 · {0}",
   "mst.hdr.paused": "일시정지 · {0}",

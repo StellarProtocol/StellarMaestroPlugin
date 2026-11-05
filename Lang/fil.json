@@ -4,6 +4,7 @@
   "mst.win.library": "Maestro · Library",
   "mst.win.preview": "Maestro · Preview",
   "mst.win.help": "Maestro · Tulong",
+  "mst.tip.help": "Tulong",
 
   "mst.hdr.playing": "● Tumutugtog · {0}",
   "mst.hdr.paused": "Naka-pause · {0}",

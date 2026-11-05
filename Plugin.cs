@@ -63,9 +63,12 @@ public sealed partial class Plugin : IStellarPlugin
         LoadPlaylists();
         RescanMidiFolder();   // create the midi/ folder (if missing) and pre-populate the song list at startup
 
+        _helpBuildSection = "mst.hub.settings";   // the "?" tips built next say "Settings · Help" (Plugin.Help.Tip.cs)
         _settingsWindow = RegisterWindow("maestro.settings", _loc.T("mst.win.settings"), 3, BuildSettingsRoot(), SettingsWindowW);   // the old Network window is merged in (NETWORK SYNC)
         _libraryWindow  = RegisterWindow("maestro.library",  _loc.T("mst.win.library"),  4, BuildLibraryRoot());
+        _helpBuildSection = "mst.hub.preview";
         _previewWindow  = RegisterWindow("maestro.preview",  _loc.T("mst.win.preview"),  5, BuildPreviewRoot());
+        _helpBuildSection = "";
         _tipWindow      = RegisterTipWindow();
         // 540 wide for the players table (Plugin.Link.Players.cs column math). A GlassMenu window that isn't Resizable
         // takes its width from this spec at mount — a saved layout restores position only — so no stale 420 can win.

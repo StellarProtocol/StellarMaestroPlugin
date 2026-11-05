@@ -4,6 +4,7 @@
   "mst.win.library": "Maestro · ライブラリ",
   "mst.win.preview": "Maestro · プレビュー",
   "mst.win.help": "Maestro · ヘルプ",
+  "mst.tip.help": "ヘルプ",
 
   "mst.hdr.playing": "● 再生中 · {0}",
   "mst.hdr.paused": "一時停止中 · {0}",

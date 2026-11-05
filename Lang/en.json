@@ -4,6 +4,7 @@
   "mst.win.library": "Maestro · Library",
   "mst.win.preview": "Maestro · Preview",
   "mst.win.help": "Maestro · Help",
+  "mst.tip.help": "Help",
 
   "mst.hdr.playing": "● Playing · {0}",
   "mst.hdr.paused": "Paused · {0}",

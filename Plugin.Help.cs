@@ -104,34 +104,7 @@ public sealed partial class Plugin
     private string TipTitle() => _helpFns.TryGetValue(_tipKey, out var e) ? e.Title() : "";
     private string TipBody()  => _helpFns.TryGetValue(_tipKey, out var e) ? e.Body()  : "";
 
-    // The shared floating tooltip: a small, non-persisted GlassMenu popover with a ✕ that also clears the active key
-    // (so the "?" accent highlight releases). Positioned per click by ToggleTip; starts hidden.
-    private IWindowControl RegisterTipWindow()
-    {
-        IWindowControl w = null!;
-        w = _services.Windows.Register(new WindowRegistration(
-            Spec: new WindowSpec(
-                Id:          "maestro.tip",
-                Title:       _loc.T("mst.win.help"),
-                DefaultRect: new WindowRect(_services.Framework.ScreenWidth - TipWidth - 20f, 20f, TipWidth, 0f),
-                Category:    WindowCategory.Tools,
-                Style:       WindowPanelStyle.GlassMenu)
-            { Draggable = true, Closable = true, StartVisible = false,
-              // Help popover for the Maestro tools — only relevant while in-world.
-              ShouldRender = () => _services.ClientState.Phase == GamePhase.World
-                                   && (_services.ClientState.UiState & GameUIState.Loading) == 0 },
-            Root: BuildTipRoot(),
-            OnClose: () => { _tipKey = ""; w!.SetVisible(false); }));
-        _windows.Add(w);
-        return w;
-    }
-
-    private HudElement BuildTipRoot() => new ColumnElement(new HudElement[]
-    {
-        new TextElement(TipTitle, Emphasis: true),
-        new TextElement(TipBody, Color: () => (ColorRgba?)_services.Theme.Colors.TextMuted),
-    }, Gap: 6f)
-    { Padding = 2 };
+    // The tip window itself (RegisterTipWindow / BuildTipRoot) is Plugin.Help.Tip.cs.
 
     // Settings rows (house style, approved design 2026-11-06): every row ends in a "?" so the "?" column lines up
     // down the panel. Slider row = [label | round-knob slider | value | ↺ | ?]; toggle row = [toggle | label | … | ?].
@@ -186,6 +159,7 @@ public sealed partial class Plugin
     private HudElement HelpDot(string key, Func<string> label, Func<string> help)
     {
         _helpFns[key] = (label, help);
+        _helpSection[key] = _helpBuildSection;   // the tip subtitle's section (Plugin.Help.Tip.cs)
         return HelpButtonCell(key);
     }
 

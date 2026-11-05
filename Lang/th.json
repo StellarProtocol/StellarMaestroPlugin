@@ -4,6 +4,7 @@
   "mst.win.library": "Maestro · คลังเพลง",
   "mst.win.preview": "Maestro · ฟังตัวอย่าง",
   "mst.win.help": "Maestro · วิธีใช้",
+  "mst.tip.help": "วิธีใช้",
 
   "mst.hdr.playing": "● กำลังเล่น · {0}",
   "mst.hdr.paused": "หยุดชั่วคราว · {0}",

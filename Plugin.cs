@@ -63,7 +63,7 @@ public sealed partial class Plugin : IStellarPlugin
         LoadPlaylists();
         RescanMidiFolder();   // create the midi/ folder (if missing) and pre-populate the song list at startup
 
-        _settingsWindow = RegisterWindow("maestro.settings", _loc.T("mst.win.settings"), 3, BuildSettingsRoot());   // the old Network window is merged in (NETWORK SYNC)
+        _settingsWindow = RegisterWindow("maestro.settings", _loc.T("mst.win.settings"), 3, BuildSettingsRoot(), SettingsWindowW);   // the old Network window is merged in (NETWORK SYNC)
         _libraryWindow  = RegisterWindow("maestro.library",  _loc.T("mst.win.library"),  4, BuildLibraryRoot());
         _previewWindow  = RegisterWindow("maestro.preview",  _loc.T("mst.win.preview"),  5, BuildPreviewRoot());
         _tipWindow      = RegisterTipWindow();

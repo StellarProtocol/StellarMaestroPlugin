@@ -8,40 +8,36 @@ namespace Stellar.Maestro;
 // The Settings window: playback tuning, sound, Network Sync and Ensemble options, and their setters.
 public sealed partial class Plugin
 {
-    // The Settings window (house style, approved design 2026-11-06; the old Network window is merged in as NETWORK SYNC):
-    // four panels of rows that each end in "?", then a full-width Close. Network / Ensemble rows grey out exactly as
-    // before (they need Network Sync); the three network sliders, which used to sit behind the disabled "Network
-    // Settings" button, now grey out the same way.
-    private HudElement BuildSettingsRoot()
-    {
-        HudElement body = new ColumnElement(new HudElement[]
-        {
-            BuildPlaybackPanel(),
-            BuildSoundPanel(),
-            BuildNetSyncPanel(),
-            BuildEnsemblePanel(),   // Plugin.Ensemble.cs
-        }, Gap: 8f);
-        // Scroll only when the panels are taller than the screen. The toolkit has no "max height" for an auto-height
-        // window, so this is decided once, here, from the computed panel height vs the canvas height (a resolution
-        // change after startup is not re-checked). When it fits, no scroll viewport (and no scrollbar lane) at all.
-        float canvasH = _services.Framework.CanvasHeight > 1f ? _services.Framework.CanvasHeight : _services.Framework.ScreenHeight;
-        float room    = canvasH - SettingsChromeH;
-        if (room > 200f && SettingsBodyHeight > room)
-            body = new ScrollElement(body, Height: room) { FixedHeight = true };
-        return new ColumnElement(new HudElement[]
-        {
-            body,
-            NeutralButton(() => _loc.T("mst.close"), () => _settingsWindow.SetVisible(false)),
-        }, Gap: 8f);
-    }
+    // The Settings window (house style; the old Network window is merged in as NETWORK SYNC). TWO equal columns
+    // (user-approved 2026-11-06, after the one-column build ran off the screen): PLAYBACK over ENSEMBLE on the left,
+    // SOUND over NETWORK SYNC on the right, then a full-width Close. Every row ends in "?". Network / Ensemble rows grey
+    // out exactly as before (they need Network Sync); the three network sliders, which used to sit behind the disabled
+    // "Network Settings" button, now grey out the same way.
+    //
+    // Width: SettingsWindowW (Plugin.cs) − 2×12 body − 8 gap = 2 × SettingsColW. The columns' bottoms line up: each
+    // column cell holds an always-true Fill Conditional (the one element that reports flexibleHeight, so the Row grows
+    // the cell to the row height — the Link top-panel trick, Plugin.Link.Ui.cs LinkTopPanel), and the column's LAST
+    // panel sits in another Fill Conditional, so the shorter column's last panel stretches down to the taller one.
+    private const float SettingsWindowW = 880f;
+    private const float SettingsColW    = (SettingsWindowW - 24f - 8f) / 2f;   // 424
 
-    // Body height from the row build, not measured: a row = the 28 px "?" pill; a panel = 2×8 padding + the bold-12
-    // caption row (~17) + rows × (28 + 6 gap); Ensemble adds its two-line footer (~6 + 40). Chrome = title bar, body
-    // padding, the Close pill and a margin to the screen edges.
-    private const float SettingsRowH      = 28f + 6f;
-    private const float SettingsPanelBase = 16f + 17f;
-    private const float SettingsBodyHeight = 4 * SettingsPanelBase + (6 + 3 + 7 + 3) * SettingsRowH + 46f + 3 * 8f;
-    private const float SettingsChromeH   = 180f;
+    private HudElement BuildSettingsRoot() => new ColumnElement(new HudElement[]
+    {
+        new RowElement(new HudElement[]
+        {
+            SettingsColumn(BuildPlaybackPanel(), BuildEnsemblePanel()),   // Plugin.Ensemble.cs
+            SettingsColumn(BuildSoundPanel(),    BuildNetSyncPanel()),
+        }, Gap: 8f),
+        NeutralButton(() => _loc.T("mst.close"), () => _settingsWindow.SetVisible(false)),
+    }, Gap: 8f);
+
+    private static HudElement SettingsColumn(HudElement top, HudElement bottom) => new CellElement(
+        new ConditionalElement(() => true, new ColumnElement(new HudElement[]
+        {
+            top,
+            new ConditionalElement(() => true, bottom, Fill: true),
+        }, Gap: 8f), Fill: true),
+        Width: SettingsColW);
 
     private HudElement BuildPlaybackPanel() => SectionPanel(() => _loc.T("mst.cap.playback"), null,
         SliderRow("transpose", () => _loc.T("mst.set.transpose"),

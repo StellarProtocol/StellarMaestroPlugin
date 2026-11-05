@@ -81,6 +81,7 @@ public sealed partial class Plugin
             StopPlayback();
             _playingList = null; _nowPlaying = -1;
         }
+        if (ShuffleListIs(Active)) ClearShuffle();
         if (_playlists.Count <= 1) { Active.Songs.Clear(); Active.Name = "Playlist 1"; }
         else { _playlists.RemoveAt(_plIdx); _plIdx = Math.Clamp(_plIdx, 0, _playlists.Count - 1); }
         _queueSel = -1; _queueScrollReset = true;
@@ -105,6 +106,7 @@ public sealed partial class Plugin
     private void AddToActive(string filename)
     {
         Active.Songs.Add(filename);
+        ShuffleOnAdded(Active, Active.Songs.Count - 1);   // joins the not-yet-played part of a running shuffle round
         SetBandStatus(_loc.TFormat("mst.status.added", System.IO.Path.GetFileNameWithoutExtension(filename)));
         SavePlaylists();
     }
@@ -115,6 +117,7 @@ public sealed partial class Plugin
     {
         if (i < 0 || i >= Active.Songs.Count) return;
         Active.Songs.RemoveAt(i);
+        ShuffleOnRemoved(Active, i);
         _nowPlaying = QueueCursor.AfterRemove(_nowPlaying, i, ViewingPlaying);   // only if this IS the playing list
         if (_queueSel == i) _queueSel = Active.Songs.Count == 0 ? -1 : Math.Min(i, Active.Songs.Count - 1);
         else if (_queueSel > i) _queueSel--;
@@ -131,6 +134,7 @@ public sealed partial class Plugin
         var x = songs[from];
         songs.RemoveAt(from);
         songs.Insert(to, x);
+        ShuffleOnMoved(Active, from, to);   // the shuffle ORDER follows the songs, so a reorder doesn't change it
         _nowPlaying = QueueCursor.AfterMove(_nowPlaying, from, to, ViewingPlaying);
         _queueSel   = QueueCursor.AfterMove(_queueSel, from, to, sameList: true);
         SavePlaylists();
@@ -140,7 +144,7 @@ public sealed partial class Plugin
     private void ToggleAutoAdvance()    => SetAutoAdvance(!_autoAdvance);
     private void ToggleShuffle()        => SetShuffle(!_shuffle);
     private void SetAutoAdvance(bool v) { _autoAdvance = v; _cfg.Set<bool>("auto_advance", v); _cfg.Save(); }
-    private void SetShuffle(bool v)     { _shuffle = v;     _cfg.Set<bool>("shuffle", v);      _cfg.Save(); }
+    private void SetShuffle(bool v)     { _shuffle = v;     _cfg.Set<bool>("shuffle", v);      _cfg.Save(); OnShuffleChanged(); }
     private void CycleLoop()            { _loopMode = (_loopMode + 1) % 3; _cfg.Set<int>("loop_mode", _loopMode); _cfg.Save(); }
     private void SetGap(int v)          { _gapSec = Math.Clamp(v, 0, 15); _cfg.Set<int>("gap_sec", _gapSec); _cfg.Save(); }
 
@@ -149,7 +153,9 @@ public sealed partial class Plugin
     private void PlayQueueIndex(int i) => PlayFrom(Active, i);
 
     // Play song i of `list` (the viewed list for an explicit play, the playing list for next / prev / loop / auto).
-    private void PlayFrom(PlaylistDto list, int i)
+    // With shuffle on, an explicit play (re)builds the shuffle order starting from this song; next / prev / loop pass
+    // keepOrder so they walk the existing order (Plugin.Playlist.Shuffle.cs).
+    private void PlayFrom(PlaylistDto list, int i, bool keepOrder = false)
     {
         _gapRemainMs = -1;   // cancel any pending between-song gap
         var songs = list.Songs;
@@ -188,6 +194,7 @@ public sealed partial class Plugin
         LinkDiagPlainStart(songs[i]);   // dev-only START/CFG rows (no-op unless the diag folder is present)
 
         _playingList = list; _nowPlaying = i;
+        if (_shuffle && !keepOrder) RebuildShuffle(list, i);
         if (ReferenceEquals(list, Active)) _queueSel = i;   // the selection belongs to the viewed list only
         string pedal = song.PedalCount > 0 ? $", pedal x{song.PedalCount}" : "";
         _bandSongTitle  = System.IO.Path.GetFileNameWithoutExtension(songs[i]);
@@ -201,19 +208,17 @@ public sealed partial class Plugin
         var list = _playingList ?? Active;
         int n = list.Songs.Count;
         if (n == 0) return;
-        int next;
         if (_shuffle && n > 1)
         {
-            do { next = _rng.Next(n); } while (next == _nowPlaying);
+            int s = ShuffleNext(list, auto);   // next in the shuffle order (-1 = round over, Loop Off)
+            if (s >= 0) PlayFrom(list, s, keepOrder: true);
+            return;
         }
-        else
+        int next = _nowPlaying + 1;
+        if (next >= n)
         {
-            next = _nowPlaying + 1;
-            if (next >= n)
-            {
-                if (auto && _loopMode != 1) return;   // end of playlist (auto-advance only wraps on Loop=All)
-                next = 0;
-            }
+            if (auto && _loopMode != 1) return;   // end of playlist (auto-advance only wraps on Loop=All)
+            next = 0;
         }
         PlayFrom(list, next);
     }
@@ -221,6 +226,12 @@ public sealed partial class Plugin
     private void PlayPrev()
     {
         var list = _playingList ?? Active;
+        if (_shuffle && list.Songs.Count > 1)
+        {
+            int s = ShufflePrev(list);   // previous in the shuffle order; at its start the current song restarts
+            if (s >= 0) PlayFrom(list, s, keepOrder: true);
+            return;
+        }
         int prev = QueueCursor.Prev(_nowPlaying, list.Songs.Count);
         if (prev >= 0) PlayFrom(list, prev);
     }
@@ -263,7 +274,7 @@ public sealed partial class Plugin
 
     private void AdvanceAfterGap()
     {
-        if (_loopMode == 2) PlayFrom(_playingList ?? Active, _nowPlaying);   // loop-one → replay (in the playing list)
+        if (_loopMode == 2) PlayFrom(_playingList ?? Active, _nowPlaying, keepOrder: true);   // loop-one → replay (in the playing list)
         else PlayNext(auto: true);
     }
 }

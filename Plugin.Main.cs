@@ -79,8 +79,14 @@ public sealed partial class Plugin
         messageAgeMs:     _bandStatusAtMs >= 0 ? Environment.TickCount64 - _bandStatusAtMs : -1,
         hasNext:          NextQueueIndex() >= 0);
 
-    private int NextQueueIndex() => _bandPlayer.IsPlaying || _bandPlayer.IsPaused
-        ? QueueNext.Index(_nowPlaying, PlayingSongs.Count, _loopMode, _shuffle, _autoAdvance) : -1;   // the PLAYING list
+    // The song auto-next will play: the next in the shuffle order when shuffling (not Loop One, which repeats), else
+    // the next row of the PLAYING list.
+    private int NextQueueIndex()
+    {
+        if (!_bandPlayer.IsPlaying && !_bandPlayer.IsPaused) return -1;
+        if (_shuffle && _autoAdvance && _loopMode != 2 && PlayingSongs.Count > 1) return ShufflePeekNext();
+        return QueueNext.Index(_nowPlaying, PlayingSongs.Count, _loopMode, _shuffle, _autoAdvance);
+    }
 
     private string MainLineText()
     {

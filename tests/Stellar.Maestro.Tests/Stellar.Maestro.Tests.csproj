@@ -15,6 +15,7 @@
   <ItemGroup>
     <Compile Include="../../LinkProtocol.cs" Link="Src/LinkProtocol.cs" />
     <Compile Include="../../LinkPlayers.cs" Link="Src/LinkPlayers.cs" />
+    <Compile Include="../../MaestroUi.cs" Link="Src/MaestroUi.cs" />
   </ItemGroup>
 
   <ItemGroup>

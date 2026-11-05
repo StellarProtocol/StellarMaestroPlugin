@@ -8,36 +8,54 @@ namespace Stellar.Maestro;
 // The Library window: the midi/ folder scan, the search filter and the click-to-add song list.
 public sealed partial class Plugin
 {
-    // The Library window — browse the midi/ folder and click a song to add it to the queue.
+    // The Library window (house style, approved design 2026-11-06): search field + Rescan / Open folder, then the SONGS
+    // panel — raised 26 px tiles, exactly LibraryRowsVisible rows tall then scrolling — and a muted "Adds to" footer.
+    private const int   LibraryRowsVisible = 15;
+    private const float LibraryListHeight  = LibraryRowsVisible * ListRowPitch;   // 15 × 28 = 420 (last row's 2 px gap at the bottom)
+    private readonly HoverSlots _searchClearHover = new(1);
+
     private HudElement BuildLibraryRoot() => new ColumnElement(new HudElement[]
     {
-        new TextElement(() => _loc.T("mst.lib.header"), Emphasis: true),
         new RowElement(new HudElement[]
         {
-            new CellElement(new ButtonElement(Label: () => _loc.T("mst.lib.rescan"), OnClick: RescanMidiFolder), Weight: 1f),
-            new CellElement(new ButtonElement(Label: () => _loc.T("mst.lib.locate"),        OnClick: OpenMidiFolder),   Weight: 1f),
-        }, Gap: 4f),
-        new SeparatorElement(),
-        new RowElement(new HudElement[]
-        {
-            new CellElement(new TextElement(() => _loc.T("mst.lib.search"), Color: () => (ColorRgba?)_services.Theme.Colors.TextMuted), Width: 56f),
-            new CellElement(new InputElement(Get: () => _librarySearch, Submit: SetLibrarySearch, OnChange: SetLibrarySearch), Weight: 1f),
-            new CellElement(new ButtonElement(Label: () => _loc.T("mst.lib.clear"), OnClick: () => SetLibrarySearch("")), Width: 56f),
+            new CellElement(new InputElement(Get: () => _librarySearch, Submit: SetLibrarySearch, OnChange: SetLibrarySearch)
+                { SingleLine = true, Placeholder = () => _loc.T("mst.lib.search") }, Weight: 1f),
+            // Clear: an icon-only ✕ after the field while it holds text; an equal-width spacer otherwise, so the
+            // buttons never move. (The toolkit can't overlay a control INSIDE an InputElement.)
+            new CellElement(new ConditionalElement(() => _librarySearch.Length > 0,
+                new RowElement(new HudElement[]
+                {
+                    RemoveIcon(_searchClearHover, 0, () => "search", () => SetLibrarySearch("")),
+                }, Justify: RowJustify.Center),
+                new SpacerElement(1f, 1f)), Width: 26f),
+            NeutralButton(() => _loc.T("mst.lib.rescan"), RescanMidiFolder),
+            NeutralButton(() => _loc.T("mst.lib.locate"), OpenMidiFolder),
         }, Gap: 6f),
-        new TextElement(() => _bandSongs.Length == 0
-                ? _loc.T("mst.lib.empty")
-                : _songView.Length == _bandSongs.Length
-                    ? _loc.TFormat("mst.lib.count", _bandSongs.Length)
-                    : _loc.TFormat("mst.lib.countFiltered", _songView.Length, _bandSongs.Length),
-            Color: () => (ColorRgba?)_services.Theme.Colors.TextMuted),
-        new VirtualListElement(
-            Count:     () => _songView.Length,
-            RowHeight: 22f,
-            Pool:      BuildSongPool(),
-            OnWindow:  first => _songWindowFirst = first,
-            Height:    240f)
-        { ResetScroll = () => { var r = _songScrollReset; _songScrollReset = false; return r; } },
+        SectionPanel(() => _loc.T("mst.cap.songs"), LibraryHint,
+            new ConditionalElement(() => _songView.Length == 0,
+                new RowElement(new HudElement[]
+                {
+                    new SpacerElement(0f, LibraryListHeight),
+                    new CellElement(new TextElement(() => _loc.T(_bandSongs.Length == 0 ? "mst.lib.empty" : "mst.lib.noMatch"),
+                        Color: () => MutedColor(), Align: TextAlign.Center), Weight: 1f),
+                }, Gap: 0.01f),
+                new VirtualListElement(
+                    Count:     () => _songView.Length,
+                    RowHeight: ListRowPitch,
+                    Pool:      BuildSongPool(),
+                    OnWindow:  first => _songWindowFirst = first,
+                    Height:    LibraryListHeight)
+                { ResetScroll = () => { var r = _songScrollReset; _songScrollReset = false; return r; } })),
+        MutedLine(() => _loc.TFormat("mst.lib.addsTo", Active.Name)),
     }, Gap: 8f);
+
+    private string LibraryHint()
+    {
+        if (_bandSongs.Length == 0) return "";
+        return _songView.Length == _bandSongs.Length
+            ? _loc.TFormat("mst.lib.count", _bandSongs.Length)
+            : _loc.TFormat("mst.lib.countFiltered", _songView.Length, _bandSongs.Length);
+    }
 
     private static string BandMidiDir()
     {
@@ -70,16 +88,21 @@ public sealed partial class Plugin
                 .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)
                 .ToArray();
             ApplyLibraryFilter();
-            _bandMidiStatus = _bandSongs.Length == 0 ? $"no .mid/.midi files in {dir}" : $"{_bandSongs.Length} file(s) found";
+            _songDurMs.Clear();   // files may have changed on disk
+            if (_bandSongs.Length == 0) SetBandStatus(_loc.T("mst.status.noFiles"));
             _services.Log.Info($"[Maestro] midi dir={dir} files={_bandSongs.Length}");
         }
-        catch (Exception ex) { _bandMidiStatus = $"scan error: {ex.Message}"; }
+        catch (Exception ex)
+        {
+            _services.Log.Warning($"[Maestro] midi scan failed: {ex.Message}");
+            SetBandStatus(_loc.T("mst.status.scanFailed"), true);
+        }
     }
 
     // Virtualized song list: a small fixed pool of rows scrolls over the full song list. The framework calls
     // OnWindow(first) before polling, so each pool slot maps to logical index (first + slot) — no blank rows,
     // and the scrollbar is sized to the true count.
-    private const int SongPoolSize = 12;   // ≈ visible rows (176/22 ≈ 8) + margin
+    private const int SongPoolSize = LibraryRowsVisible + 3;   // visible rows + margin
     private int      _songWindowFirst;
     private bool     _songScrollReset;
     private string   _librarySearch = "";
@@ -103,15 +126,23 @@ public sealed partial class Plugin
         ApplyLibraryFilter();
     }
 
+    // Row = [name (ellipsized) | length (muted) | green "+"] on a raised tile; a click anywhere adds the song.
     private HudElement[] BuildSongPool()
     {
         var pool = new HudElement[SongPoolSize];
         for (int s = 0; s < SongPoolSize; s++)
         {
             int slot = s;
-            pool[s] = new SelectableElement(
-                new TextElement(() => SongSlotLabel(slot), NoWrap: true),   // single line; viewport RectMask2D hard-clips long names
-                OnClick: () => AddLibraryToQueue(_songWindowFirst + slot));
+            pool[s] = ListTile(new SelectableElement(new RowElement(new HudElement[]
+                {
+                    new SpacerElement(0f, ListTileHeight - 8f),   // + the selectable's 4 + 4 = the 26 px tile
+                    new CellElement(new TextElement(() => SongSlotLabel(slot), Color: () => TextColor(), NoWrap: true)
+                        { Ellipsize = true }, Weight: 1f),
+                    new CellElement(new TextElement(() => SongSlotDuration(slot), Color: () => MutedColor(),
+                        Align: TextAlign.Right, NoWrap: true), Width: DurationColW),
+                    new TextElement(() => "+", Color: () => StatusGreen, NoWrap: true, FontSize: 16) { Bold = true },
+                }, Gap: 6f),
+                OnClick: () => AddLibraryToQueue(_songWindowFirst + slot)));
         }
         return pool;
     }
@@ -122,6 +153,34 @@ public sealed partial class Plugin
         return i >= 0 && i < _songView.Length ? System.IO.Path.GetFileNameWithoutExtension(_songView[i]) : "";
     }
 
+    private string SongSlotDuration(int slot)
+    {
+        int i = _songWindowFirst + slot;
+        return i >= 0 && i < _songView.Length ? SongDurationText(System.IO.Path.GetFileName(_songView[i])) : "";
+    }
+
+    // ── song lengths (queue + library rows) ──────────────────────────────────────────────────────────────────────
+    // Parsed on demand the first time a row shows the file and cached by file name (cleared on rescan). The row Funcs
+    // are polled every refresh, so a new file costs ONE MidiParser pass, and at most DurParsesPerTick per frame
+    // (PlaylistTick resets the budget) — a long list scrolled fast fills in over a few frames instead of hitching.
+    private const float DurationColW     = 40f;
+    private const int   DurParsesPerTick = 2;
+    private readonly System.Collections.Generic.Dictionary<string, int> _songDurMs = new(StringComparer.OrdinalIgnoreCase);
+    private int _durParseBudget = DurParsesPerTick;
+
+    private string SongDurationText(string fileName)
+    {
+        if (!_songDurMs.TryGetValue(fileName, out int ms))
+        {
+            if (_durParseBudget <= 0) return "";
+            _durParseBudget--;
+            var song = MidiParser.TryParseFile(System.IO.Path.Combine(BandMidiDir(), fileName), out _);
+            ms = song?.DurationMs ?? -1;
+            _songDurMs[fileName] = ms;
+        }
+        return ms > 0 ? Mmss(ms) : "";
+    }
+
     // Clicking a library row appends that file to the active playlist's queue (stores the bare filename).
     private void AddLibraryToQueue(int libIdx)
     {
@@ -129,11 +188,12 @@ public sealed partial class Plugin
         AddToActive(System.IO.Path.GetFileName(_songView[libIdx]));
     }
 
-    // Rescans the midi/ folder, then opens the Library window — so newly-dropped files show up without a manual rescan.
+    // Rescans the midi/ folder, then opens the Library window centred on the main window — so newly-dropped files show
+    // up without a manual rescan.
     private void OpenLibrary()
     {
         RescanMidiFolder();
-        _libraryWindow.SetVisible(true);
+        _libraryCenterer.OpenCentred();
     }
 
     // Opens the midi/ folder in the OS file explorer (creating it first if missing) so the user can drop files in.
@@ -144,8 +204,11 @@ public sealed partial class Plugin
             var dir = BandMidiDir();
             System.IO.Directory.CreateDirectory(dir);
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo { FileName = dir, UseShellExecute = true });
-            _bandMidiStatus = $"opened {dir}";
         }
-        catch (Exception ex) { _bandMidiStatus = $"open failed: {ex.Message}"; }
+        catch (Exception ex)
+        {
+            _services.Log.Warning($"[Maestro] open midi folder failed: {ex.Message}");
+            SetBandStatus(_loc.T("mst.status.openFailed"), true);
+        }
     }
 }

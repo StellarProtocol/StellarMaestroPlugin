@@ -48,6 +48,7 @@ public sealed partial class Plugin
 
     private void SavePlaylists()
     {
+        _playlistNames = null;   // a playlist was added / removed / renamed → rebuild the dropdown's option list
         try { _cfg.Set<string>("playlists", System.Text.Json.JsonSerializer.Serialize(_playlists)); } catch { }
         _cfg.Set<int>("active_playlist", _plIdx);
         _cfg.Save();
@@ -76,10 +77,10 @@ public sealed partial class Plugin
         SavePlaylists();
     }
 
-    private void SelectPlaylist(int delta)
+    private void SelectPlaylistIndex(int i)
     {
-        int n = _playlists.Count;
-        _plIdx = (_plIdx + delta % n + n) % n;
+        if (i < 0 || i >= _playlists.Count || i == _plIdx) return;
+        _plIdx = i;
         _queueSel = -1; _nowPlaying = -1; _queueScrollReset = true;
         SavePlaylists();
     }
@@ -88,17 +89,19 @@ public sealed partial class Plugin
     private void AddToActive(string filename)
     {
         Active.Songs.Add(filename);
-        _bandMidiStatus = $"added {System.IO.Path.GetFileNameWithoutExtension(filename)}";
+        SetBandStatus(_loc.TFormat("mst.status.added", System.IO.Path.GetFileNameWithoutExtension(filename)));
         SavePlaylists();
     }
 
-    private void RemoveFromQueue()
+    // A row's ✕: removes that entry (not necessarily the selected one); the selection and the playing marker follow
+    // their songs.
+    private void RemoveFromQueue(int i)
     {
-        int i = _queueSel;
         if (i < 0 || i >= Active.Songs.Count) return;
         Active.Songs.RemoveAt(i);
         if (_nowPlaying == i) _nowPlaying = -1; else if (_nowPlaying > i) _nowPlaying--;
-        _queueSel = Active.Songs.Count == 0 ? -1 : Math.Min(i, Active.Songs.Count - 1);
+        if (_queueSel == i) _queueSel = Active.Songs.Count == 0 ? -1 : Math.Min(i, Active.Songs.Count - 1);
+        else if (_queueSel > i) _queueSel--;
         SavePlaylists();
     }
 
@@ -112,14 +115,9 @@ public sealed partial class Plugin
         SavePlaylists();
     }
 
-    private void ClearQueue()
-    {
-        Active.Songs.Clear();
-        _nowPlaying = -1; _queueSel = -1; _queueScrollReset = true;
-        SavePlaylists();
-    }
-
     // ---- mode toggles ----
+    private void ToggleAutoAdvance()    => SetAutoAdvance(!_autoAdvance);
+    private void ToggleShuffle()        => SetShuffle(!_shuffle);
     private void SetAutoAdvance(bool v) { _autoAdvance = v; _cfg.Set<bool>("auto_advance", v); _cfg.Save(); }
     private void SetShuffle(bool v)     { _shuffle = v;     _cfg.Set<bool>("shuffle", v);      _cfg.Save(); }
     private void CycleLoop()            { _loopMode = (_loopMode + 1) % 3; _cfg.Set<int>("loop_mode", _loopMode); _cfg.Save(); }
@@ -131,24 +129,28 @@ public sealed partial class Plugin
     {
         _gapRemainMs = -1;   // cancel any pending between-song gap
         var songs = Active.Songs;
-        if (i < 0 || i >= songs.Count) { _bandMidiStatus = _loc.T("mst.status.playlistEmpty"); return; }
-        if (!IsBandViewOpen()) { _bandMidiStatus = _loc.T("mst.status.openFreePlay"); return; }
+        if (i < 0 || i >= songs.Count) { SetBandStatus(_loc.T("mst.status.playlistEmpty"), true); return; }
+        if (!IsBandViewOpen()) { SetBandStatus(_loc.T("mst.status.openFreePlay"), true); return; }
 
         // Ensemble sync armed but not in an ensemble yet → hold; EnsembleWaitTick starts us when it goes live.
         if (_bandEnsembleSync && _bandNetPrebuffer && !EnsembleActive())
         {
             _ensembleWaitIdx = i;
             _ensembleWaiting = true;
-            _bandMidiStatus  = _loc.T("mst.status.waitEnsemble");
             return;
         }
         _ensembleWaiting = false;
 
         var path = System.IO.Path.Combine(BandMidiDir(), songs[i]);
-        if (!System.IO.File.Exists(path)) { _bandMidiStatus = $"missing file: {songs[i]}"; return; }
+        if (!System.IO.File.Exists(path)) { SetBandStatus(_loc.TFormat("mst.status.missingFile", songs[i]), true); return; }
 
         var song = MidiParser.TryParseFile(path, out var err);
-        if (song == null) { _bandMidiStatus = $"parse failed: {err}"; return; }
+        if (song == null)
+        {
+            _services.Log.Warning($"[Maestro] parse failed for {songs[i]}: {err}");
+            SetBandStatus(_loc.TFormat("mst.status.parseFailed", System.IO.Path.GetFileNameWithoutExtension(songs[i])), true);
+            return;
+        }
 
         _bandPlayer.HoldOffsetMs   = _bandHoldMs;
         _bandPlayer.ForceSustain   = _bandForceSustain;
@@ -162,8 +164,9 @@ public sealed partial class Plugin
 
         _nowPlaying = i; _queueSel = i;
         string pedal = song.PedalCount > 0 ? $", pedal x{song.PedalCount}" : "";
-        _bandSongInfo   = $"{song.Name}: {song.NoteCount} notes, {song.DurationMs / 1000.0:F1}s, range {NoteName(song.MinNote)}–{NoteName(song.MaxNote)}{pedal}";
-        _bandMidiStatus = _loc.T("mst.status.playing");
+        _bandSongTitle  = System.IO.Path.GetFileNameWithoutExtension(songs[i]);
+        _bandMidiStatus = ""; _bandStatusAtMs = -1;   // a fresh start clears any old message (the header says Playing)
+        _services.Log.Info($"[Maestro] playing {song.Name}: {song.NoteCount} notes, {song.DurationMs / 1000.0:F1}s, range {NoteName(song.MinNote)}–{NoteName(song.MaxNote)}{pedal}");
     }
 
     private void PlayNext(bool auto)
@@ -204,6 +207,7 @@ public sealed partial class Plugin
     // Called each frame (from Plugin.cs): advance the queue when a song finishes, after an optional silent gap.
     private void PlaylistTick(float dt)
     {
+        _durParseBudget = DurParsesPerTick;   // song-length cache: at most this many MIDI parses per frame (Plugin.Library.cs)
         ManageUpdateRate();            // hold 120 Hz while a song plays; release when idle (before early-returns)
         TipRepositionTick();           // re-assert the help tooltip's anchored position for a few frames after opening
         AutoAcceptEnsembleTick(dt);    // self-healing: (re)install the auto-accept listener while enabled if it's missing
@@ -217,7 +221,7 @@ public sealed partial class Plugin
         if (_lkPhase != LinkPhase.Off) return;   // linked: the ROOM runs the queue (Plugin.Link.Song.cs owns the player)
         if (!_bandPlayer.ConsumeCompleted()) return;
         if (_loopMode != 2 && !_autoAdvance) return;   // stop at end (not looping-one, not auto-advancing)
-        if (_gapSec > 0) { _gapRemainMs = _gapSec * 1000.0; _bandMidiStatus = $"next in {_gapSec}s…"; return; }
+        if (_gapSec > 0) { _gapRemainMs = _gapSec * 1000.0; return; }   // the status line counts it down (MainLineKind.NextIn)
         AdvanceAfterGap();
     }
 
@@ -235,90 +239,4 @@ public sealed partial class Plugin
         if (_loopMode == 2) PlayQueueIndex(_nowPlaying);   // loop-one → replay
         else PlayNext(auto: true);
     }
-
-    // ---- queue list UI ----
-    private const int QueuePoolSize = 10;
-    private int  _queueWindowFirst;
-    private bool _queueScrollReset;
-
-    private HudElement[] BuildQueuePool()
-    {
-        var pool = new HudElement[QueuePoolSize];
-        for (int s = 0; s < QueuePoolSize; s++)
-        {
-            int slot = s;
-            pool[s] = new SelectableElement(
-                new TextElement(() => QueueSlotLabel(slot), NoWrap: true),   // single line; viewport RectMask2D hard-clips long names
-                OnClick:  () => SelectQueue(_queueWindowFirst + slot),
-                Selected: () => { int i = _queueWindowFirst + slot; return i < Active.Songs.Count && i == _queueSel; });
-        }
-        return pool;
-    }
-
-    private string QueueSlotLabel(int slot)
-    {
-        int i = _queueWindowFirst + slot;
-        var songs = Active.Songs;
-        if (i < 0 || i >= songs.Count) return "";
-        string name = System.IO.Path.GetFileNameWithoutExtension(songs[i]);
-        return (i == _nowPlaying ? "▶ " : $"{i + 1}. ") + name;
-    }
-
-    private HudElement BuildPlaylistSection() => new ColumnElement(new HudElement[]
-    {
-        new SeparatorElement(),
-        new RowElement(new HudElement[]
-        {
-            new CellElement(new ButtonElement(Label: () => "◀", OnClick: () => SelectPlaylist(-1)), Width: 34f),
-            new CellElement(new TextElement(() => $"{Active.Name}  ({_plIdx + 1}/{_playlists.Count})", Emphasis: true), Weight: 1f),
-            new CellElement(new ButtonElement(Label: () => "▶", OnClick: () => SelectPlaylist(+1)), Width: 34f),
-            new CellElement(new ButtonElement(Label: () => "+ " + _loc.T("mst.pl.new"), OnClick: NewPlaylist),          Width: 64f),
-            new CellElement(new ButtonElement(Label: () => _loc.T("mst.pl.del"),   OnClick: DeleteActivePlaylist), Width: 48f),
-        }, Gap: 4f),
-        new RowElement(new HudElement[]
-        {
-            new CellElement(new TextElement(() => _loc.T("mst.pl.name"), Color: () => (ColorRgba?)_services.Theme.Colors.TextMuted), Width: 42f),
-            new CellElement(new InputElement(
-                Get:    () => Active.Name,
-                Submit: RenameActivePlaylist), Weight: 1f),
-        }, Gap: 6f),
-        new RowElement(new HudElement[]
-        {
-            new CellElement(new TextElement(
-                () => Active.Songs.Count == 0 ? _loc.T("mst.pl.queueEmpty") : _loc.TFormat("mst.pl.queueCount", Active.Songs.Count),
-                Color: () => (ColorRgba?)_services.Theme.Colors.TextMuted), Weight: 1f),
-            new CellElement(new ButtonElement(Label: () => "+ " + _loc.T("mst.pl.library"), OnClick: OpenLibrary), Width: 96f),
-        }, Gap: 6f),
-        new VirtualListElement(
-            Count:     () => Active.Songs.Count,
-            RowHeight: 22f,
-            Pool:      BuildQueuePool(),
-            OnWindow:  first => _queueWindowFirst = first,
-            Height:    154f)
-        { ResetScroll = () => { var r = _queueScrollReset; _queueScrollReset = false; return r; } },
-        new RowElement(new HudElement[]
-        {
-            new CellElement(new ButtonElement(Label: () => _loc.T("mst.pl.remove"), OnClick: RemoveFromQueue), Weight: 1f),
-            new CellElement(new ButtonElement(Label: () => "▲",      OnClick: () => MoveQueue(-1)), Width: 40f),
-            new CellElement(new ButtonElement(Label: () => "▼",      OnClick: () => MoveQueue(+1)), Width: 40f),
-            new CellElement(new ButtonElement(Label: () => _loc.T("mst.pl.clear"),  OnClick: ClearQueue), Weight: 1f),
-        }, Gap: 4f),
-        new RowElement(new HudElement[]
-        {
-            new ToggleElement(Label: () => "", Get: () => _autoAdvance, Set: SetAutoAdvance),
-            new CellElement(new TextElement(() => _loc.T("mst.pl.autoAdvance")), Width: 96f),
-            new CellElement(new ButtonElement(Label: () => _loc.T("mst.pl.loop") + ": " + LoopName(), OnClick: CycleLoop), Weight: 1f),
-            new ToggleElement(Label: () => "", Get: () => _shuffle, Set: SetShuffle),
-            new CellElement(new TextElement(() => _loc.T("mst.pl.shuffle")), Width: 60f),
-        }, Gap: 6f),
-        new RowElement(new HudElement[]
-        {
-            new CellElement(new TextElement(() => _loc.T("mst.pl.gap"), Color: () => (ColorRgba?)_services.Theme.Colors.TextMuted), Width: 128f),
-            new CellElement(new SliderElement(
-                Get: () => _gapSec,
-                Set: v  => SetGap((int)System.MathF.Round(v)),
-                Min: 0f, Max: 15f), Weight: 1f),
-            new CellElement(new TextElement(() => _gapSec == 0 ? _loc.T("mst.off") : $"{_gapSec}s"), Width: 48f),
-        }, Gap: 6f),
-    }, Gap: 6f);
 }

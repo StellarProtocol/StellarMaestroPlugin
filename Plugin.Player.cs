@@ -18,53 +18,6 @@ public sealed partial class Plugin
     private static string NoteName(int midi)
         => midi < 0 || midi > 127 ? midi.ToString() : $"{_noteNames[midi % 12]}{midi / 12 - 1}";
 
-    private HudElement BuildBandRoot() => new ColumnElement(new HudElement[]
-    {
-        new TextElement(() => _loc.T("mst.player.header"), Emphasis: true),
-
-        BuildPlaylistSection(),
-
-        new SeparatorElement(),
-        new RowElement(new HudElement[]
-        {
-            new CellElement(new ButtonElement(Label: () => "◀◀", OnClick: PlayPrev), Width: 46f),
-            new CellElement(new ButtonElement(Label: PlayPauseLabel, OnClick: PlayPause), Weight: 1f),
-            new CellElement(new ButtonElement(Label: () => "▶▶", OnClick: () => PlayNext(false)), Width: 46f),
-            new CellElement(new ButtonElement(Label: () => "■ " + _loc.T("mst.stop"), OnClick: StopPlayback), Width: 80f),
-        }, Gap: 4f),
-        new RowElement(new HudElement[]
-        {
-            new CellElement(new SliderElement(Get: ProgressFrac, Set: SeekFrac, Min: 0f, Max: 1f), Weight: 1f),
-            new CellElement(new TextElement(() => $"{Mmss(_bandPlayer.PositionMs)} / {Mmss(_bandPlayer.DurationMs)}"), Width: 92f),
-        }, Gap: 6f),
-        new RowElement(new HudElement[]
-        {
-            new CellElement(new TextElement(() => _loc.T("mst.song"), Color: () => (ColorRgba?)_services.Theme.Colors.TextMuted), Width: 48f),
-            new TextElement(() => (_bandPlayer.IsPlaying || _bandPlayer.IsPaused) ? _bandSongInfo : "—"),
-        }, Gap: 6f),
-        new RowElement(new HudElement[]
-        {
-            new CellElement(new TextElement(() => _loc.T("mst.playLabel"), Color: () => (ColorRgba?)_services.Theme.Colors.TextMuted), Width: 48f),
-            new TextElement(() => _ensembleWaiting
-                ? _loc.T("mst.play.waitEnsemble")
-                : _bandPlayer.CountInRemainMs > 0
-                ? _loc.TFormat("mst.play.countIn", (_bandPlayer.CountInRemainMs / 1000.0).ToString("F1"))
-                : (_bandPlayer.IsPlaying
-                    ? _loc.TFormat("mst.play.notes", _bandPlayer.SentNotes, _bandPlayer.SongNotes)
-                    : (_bandPlayer.SentNotes > 0 ? _loc.TFormat("mst.play.done", _bandPlayer.SentNotes, _bandPlayer.SongNotes) : _loc.T("mst.play.stopped")))),
-        }, Gap: 6f),
-        new RowElement(new HudElement[]
-        {
-            new CellElement(new TextElement(() => _loc.T("mst.status"), Color: () => (ColorRgba?)_services.Theme.Colors.TextMuted), Width: 48f),
-            new TextElement(() => _bandMidiStatus, Color: () => (ColorRgba?)_services.Theme.Colors.TextMuted),
-        }, Gap: 6f),
-
-        new SeparatorElement(),
-        new ButtonElement(Label: () => "🎧 " + _loc.T("mst.btn.preview"), OnClick: () => _previewWindow.SetVisible(true), Width: 320f),
-        new ButtonElement(Label: () => _loc.T("mst.btn.settings"), OnClick: () => _settingsWindow.SetVisible(true), Width: 320f),
-        new ButtonElement(Label: () => _loc.T("mst.btn.link"), OnClick: OpenLinkWindow, Width: 320f),
-    }, Gap: 8f);
-
     // Playback progress as a 0..1 fraction; seeking scales it back to ms. Duration is in the player's current
     // position timebase (song-ms for local, real-ms for buffered), matching PositionMs.
     //
@@ -112,8 +65,10 @@ public sealed partial class Plugin
     private IWindowControl _settingsWindow = null!;
     private IWindowControl _libraryWindow  = null!;
     private IWindowControl _previewWindow  = null!;
-    private string   _bandMidiStatus = "ready";     // transient status line (added / queued / errors / rescans)
-    private string   _bandSongInfo   = "";          // now-playing song info — shown on the Song line only while playing
+    private string   _bandMidiStatus = "";          // last status message (added / errors / rescans) — SetBandStatus
+    private long     _bandStatusAtMs = -1;          // when it was set (Environment.TickCount64); -1 = none yet
+    private bool     _bandStatusProblem;            // a problem (warning colour, shown longer) vs an info message
+    private string   _bandSongTitle  = "";          // NOW PLAYING title (the queue entry's file name)
     private int      _bandTranspose;
     private int      _bandHoldMs;
     private bool     _bandForceSustain;
@@ -136,22 +91,32 @@ public sealed partial class Plugin
     // A song is "selected to switch" when the highlighted queue row isn't the one currently playing.
     private bool QueueSelectDiffers() => _queueSel >= 0 && _queueSel != _nowPlaying;
 
+    // Plain words, no ▶ / ▮▮ prefix: the label sits in a bold pill, and the bold face has no Geometric Shapes glyphs.
     private string PlayPauseLabel()
     {
-        if (_bandPlayer.IsPlaying) return QueueSelectDiffers() ? "▶ " + _loc.T("mst.play") : "▮▮ " + _loc.T("mst.pause");
-        if (_bandPlayer.IsPaused)  return QueueSelectDiffers() ? "▶ " + _loc.T("mst.play") : "▶ " + _loc.T("mst.resume");
-        return "▶ " + _loc.T("mst.play");
+        if (_bandPlayer.IsPlaying) return QueueSelectDiffers() ? _loc.T("mst.play") : _loc.T("mst.pause");
+        if (_bandPlayer.IsPaused)  return QueueSelectDiffers() ? _loc.T("mst.play") : _loc.T("mst.resume");
+        return _loc.T("mst.play");
+    }
+
+    // The status message shown on the NOW PLAYING status line for a while (MaestroUi.cs MainStatusLine). Problems use
+    // the warning colour and stay longer.
+    private void SetBandStatus(string msg, bool problem = false)
+    {
+        _bandMidiStatus    = msg;
+        _bandStatusAtMs    = Environment.TickCount64;
+        _bandStatusProblem = problem;
     }
 
     private void PlayPause()
     {
         bool switchSel = QueueSelectDiffers();
         if (_bandPlayer.IsPlaying && !switchSel) { _bandPlayer.Pause(); return; }   // pause current (needs nothing)
-        if (!IsBandViewOpen()) { _bandMidiStatus = _loc.T("mst.status.openFreePlay"); return; }
+        if (!IsBandViewOpen()) { SetBandStatus(_loc.T("mst.status.openFreePlay"), true); return; }
         if (switchSel) { PlayQueueIndex(_queueSel); return; }                       // play the selected song
         if (_bandPlayer.IsPaused) { _bandPlayer.Resume(); return; }
 
-        if (Active.Songs.Count == 0) { _bandMidiStatus = _loc.T("mst.status.queueEmpty"); return; }
+        if (Active.Songs.Count == 0) { SetBandStatus(_loc.T("mst.status.queueEmpty"), true); return; }
         PlayQueueIndex(_queueSel >= 0 ? _queueSel : (_nowPlaying >= 0 ? _nowPlaying : 0));
     }
 

@@ -10,7 +10,7 @@ namespace Stellar.Maestro;
 //                opens this instead — see Plugin.cs OnOpen). Disconnect hands the main window back (EndLink).
 // Look = the Stellar Design Language (approved design 2026-11-05; helpers in Plugin.Link.Style.cs): ROOM + NOW PLAYING
 // panels side by side, the PLAYERS panel (Plugin.Link.Players.cs), then a Neutral pill pair. Window width 540.
-// Opening from hidden remounts on top within its ZCat, so no BringToFront (Rule 5).
+// Opened from the main window's hub card centred on it and in front (WindowCenterer.OpenCentred — Plugin.Main.cs).
 public sealed partial class Plugin
 {
     private IWindowControl _linkWindow = null!;
@@ -26,7 +26,7 @@ public sealed partial class Plugin
         new ConditionalElement(() => IsLinked, BuildLinkStatusView(), BuildLinkJoinView()),
     }, Gap: 0f);
 
-    private void OpenLinkWindow() => _linkWindow.SetVisible(true);
+    private void OpenLinkWindow() => _linkCenterer.OpenCentred();
 
     // ---- unlinked: join form ----
 

@@ -174,6 +174,7 @@
   "mst.link.players.you": "(kamu)",
   "mst.link.players.loading": "Memuat pemain…",
   "mst.link.players.noPart": "Tidak ada bagian di lagu ini",
+  "mst.link.players.noInstrument": "Tanpa instrumen",
   "mst.link.col.name": "Nama",
   "mst.link.col.instrument": "Instrumen",
   "mst.link.col.state": "Status",

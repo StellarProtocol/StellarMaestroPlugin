@@ -69,7 +69,7 @@ public sealed partial class Plugin
         return _loc.TFormat("mst.link.players.count", _lkPlayers.Count, max, playing);
     }
 
-    private HudElement BuildLinkPlayersPanel() => SectionPanel(
+    private HudElement BuildLinkPlayersPanel() => SectionPanelWithTrailing(
         () => _loc.T("mst.link.cap.players"), LinkPlayersHint, PlayersToggle(),
         new ConditionalElement(() => _lkPlayersShown, new ColumnElement(new HudElement[]
         {
@@ -164,9 +164,10 @@ public sealed partial class Plugin
         switch (r.Value.Inst)
         {
             case LinkInstCol.Problem: return _loc.T(ProblemKey(r.Value.Problem));
-            case LinkInstCol.NoPart:  return _loc.T("mst.link.players.noPart");
+            case LinkInstCol.NoPart:       return _loc.T("mst.link.players.noPart");
+            case LinkInstCol.NoInstrument: return _loc.T("mst.link.players.noInstrument");
         }
-        if (p.InstrumentId is not int inst || inst <= 0) return "—";
+        if (p.InstrumentId is not int inst || inst <= 0) return "—";   // unreachable: the mapping says NoInstrument
         // Tone unknown → instrument only (never a guessed tone); 0 = the instrument's default tone (LinkEquipName).
         return p.ToneId is int tone ? LinkEquipName(inst, tone) : LinkInstrumentName(inst);
     }
@@ -174,7 +175,7 @@ public sealed partial class Plugin
     private ColorRgba PlayerInstColor(LinkPlayerRow? r) => r switch
     {
         { Inst: LinkInstCol.Problem } => ProblemText,
-        { Inst: LinkInstCol.NoPart } or { NameMuted: true } => MutedColor(),
+        { Inst: LinkInstCol.NoPart or LinkInstCol.NoInstrument } or { NameMuted: true } => MutedColor(),
         _ => TextColor(),
     };
 

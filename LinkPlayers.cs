@@ -63,8 +63,9 @@ internal enum LinkChip { Playing, Ready, Switch, Stopped, Resting, Idle, Problem
 // Status dot colour class.
 internal enum LinkDot { Online, Away, Offline }
 
-// What the instrument column shows instead of "Instrument · Tone".
-internal enum LinkInstCol { Equip, Problem, NoPart, None }
+// What the instrument column shows: Equip = "Instrument · Tone" (one is held), NoInstrument = muted "No instrument"
+// (nothing held — normal before a song, since Link equips per song), Problem = the red reason, NoPart = muted "no part".
+internal enum LinkInstCol { Equip, NoInstrument, Problem, NoPart, None }
 
 internal readonly record struct LinkPlayerRow(LinkChip Chip, LinkDot Dot, LinkInstCol Inst, string? Problem, bool NameMuted, bool ShowPing);
 
@@ -73,20 +74,27 @@ internal static class LinkPlayerMap
     // A disconnected player this recent is "Reconnect" (amber), older is "Offline" (grey).
     public const int ReconnectWindowMs = 30000;
 
-    // First problem shown, in this order (most actionable first — matches the plugin's own warning line).
-    private static readonly string[] ProblemOrder = { "band_view_closed", "no_instrument", "not_buffered", "not_synced" };
+    // Reason shown when a row IS a problem, in this order — the SAME precedence as the plugin's own warning line
+    // (LinkWarningText). no_instrument beats band_view_closed: with nothing held the band view is naturally closed too,
+    // so the root cause must win.
+    private static readonly string[] ProblemOrder = { "no_instrument", "band_view_closed", "not_buffered", "not_synced" };
 
-    // Precedence top-down (approved design): 1. disconnected, 2. a known warning, 3. the state.
+    // Precedence top-down: 1. disconnected, 2. a known warning — but ONLY for a player with a part in the current /
+    // prepared song (part == true), 3. the state. A missing instrument / closed band view is NOT a problem by itself:
+    // Link equips per song, so before a song (or for a player resting this one out) it is the normal idle state, and
+    // the warnings are ignored there (user revision 2026-11-06).
     public static LinkPlayerRow Map(LinkPlayer p)
     {
+        var equip = p.InstrumentId is int inst && inst > 0 ? LinkInstCol.Equip : LinkInstCol.NoInstrument;
         if (!p.Connected)
             return p.AwayMs < ReconnectWindowMs
-                ? new LinkPlayerRow(LinkChip.Reconnect, LinkDot.Away, LinkInstCol.Equip, null, false, false)
-                : new LinkPlayerRow(LinkChip.Offline, LinkDot.Offline, LinkInstCol.Equip, null, true, false);
+                ? new LinkPlayerRow(LinkChip.Reconnect, LinkDot.Away, equip, null, false, false)
+                : new LinkPlayerRow(LinkChip.Offline, LinkDot.Offline, equip, null, true, false);
 
-        foreach (var w in ProblemOrder)
-            if (p.Warnings.Contains(w))
-                return new LinkPlayerRow(LinkChip.Problem, LinkDot.Online, LinkInstCol.Problem, w, false, true);
+        if (p.Part == true)
+            foreach (var w in ProblemOrder)
+                if (p.Warnings.Contains(w))
+                    return new LinkPlayerRow(LinkChip.Problem, LinkDot.Online, LinkInstCol.Problem, w, false, true);
 
         var chip = p.State switch
         {
@@ -97,7 +105,7 @@ internal static class LinkPlayerMap
             // part == false only exists while a song is in play (null = no song) → this player sits this one out.
             _ => p.Part == false ? LinkChip.Resting : LinkChip.Idle,
         };
-        return new LinkPlayerRow(chip, LinkDot.Online, chip == LinkChip.Resting ? LinkInstCol.NoPart : LinkInstCol.Equip,
+        return new LinkPlayerRow(chip, LinkDot.Online, chip == LinkChip.Resting ? LinkInstCol.NoPart : equip,
                                  null, false, true);
     }
 

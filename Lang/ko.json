@@ -174,6 +174,7 @@
   "mst.link.players.you": "(나)",
   "mst.link.players.loading": "플레이어 불러오는 중…",
   "mst.link.players.noPart": "이 곡에 파트 없음",
+  "mst.link.players.noInstrument": "악기 없음",
   "mst.link.col.name": "이름",
   "mst.link.col.instrument": "악기",
   "mst.link.col.state": "상태",

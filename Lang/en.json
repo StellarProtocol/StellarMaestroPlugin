@@ -174,6 +174,7 @@
   "mst.link.players.you": "(you)",
   "mst.link.players.loading": "Loading players…",
   "mst.link.players.noPart": "No part in this song",
+  "mst.link.players.noInstrument": "No instrument",
   "mst.link.col.name": "Name",
   "mst.link.col.instrument": "Instrument",
   "mst.link.col.state": "State",

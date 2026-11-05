@@ -112,10 +112,17 @@ public sealed partial class Plugin
     // A rounded panel (background darkened, live): small UPPERCASE caption + right-aligned muted hint (+ an optional
     // trailing control after the hint, e.g. the PLAYERS Hide/Show), then the children. Directly in a Column it FILLS
     // the width (a Bubble only hugs inside a Row).
+    //
+    // ⚠️ The trailing variant has its OWN NAME on purpose. As an overload SectionPanel(caption, hint, HudElement?
+    // trailing, params children) it silently stole the first child of EVERY call: with two params-array overloads both
+    // applicable only in expanded form, C# prefers the one with MORE declared parameters (spec §12.6.4.3), so
+    // SectionPanel(cap, hint, a, b, c) bound `a` as `trailing` → it was drawn inside the caption row (How step 1, the
+    // ROOM code line, the NOW PLAYING title), or dropped outright when there was no caption row (the join panel hint).
     private HudElement SectionPanel(Func<string>? caption, Func<string>? hint, params HudElement[] children)
-        => SectionPanel(caption, hint, null, children);
+        => SectionPanelWithTrailing(caption, hint, null, children);
 
-    private HudElement SectionPanel(Func<string>? caption, Func<string>? hint, HudElement? trailing, params HudElement[] children)
+    private HudElement SectionPanelWithTrailing(Func<string>? caption, Func<string>? hint, HudElement? trailing,
+        params HudElement[] children)
     {
         var items = new List<HudElement>(children.Length + 1);
         if (caption != null || hint != null)

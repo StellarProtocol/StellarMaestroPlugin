@@ -4,8 +4,8 @@ using Xunit;
 
 namespace Stellar.Maestro.Tests;
 
-// The `players` message parse + the PLAYERS row mapping (LinkPlayers.cs) — precedence per the approved design:
-// disconnected → warnings → state. (Theory data passes enum NAMES: the enums are internal, and a public test
+// The `players` message parse + the PLAYERS row mapping (LinkPlayers.cs) — precedence: disconnected → warnings (only
+// with a part in the song) → state. (Theory data passes enum NAMES: the enums are internal, and a public test
 // method can't take an internal parameter type.)
 public class LinkPlayersTests
 {
@@ -63,16 +63,47 @@ public class LinkPlayersTests
     }
 
     [Fact]
-    public void Warnings_Problem_FirstInFixedOrder()
+    public void Warnings_Problem_OnlyWithPart_FirstInFixedOrder()
     {
-        var r = Map("""{ "connected": true, "state": "playing", "warnings": ["not_synced", "no_instrument", "band_view_closed"] }""");
+        var r = Map("""{ "connected": true, "state": "playing", "part": true, "warnings": ["not_synced", "no_instrument", "band_view_closed"] }""");
         Assert.Equal(LinkChip.Problem, r.Chip);
         Assert.Equal(LinkInstCol.Problem, r.Inst);
-        Assert.Equal("band_view_closed", r.Problem);
+        Assert.Equal("no_instrument", r.Problem);
         Assert.Equal(LinkDot.Online, r.Dot);
 
-        Assert.Equal("not_buffered", Map("""{ "connected": true, "warnings": ["not_synced", "not_buffered"] }""").Problem);
+        // Order = LinkWarningText: no_instrument (root cause — the band view is closed whenever nothing is held)
+        // → band_view_closed → not_buffered → not_synced.
+        Assert.Equal("no_instrument", Map("""{ "connected": true, "part": true, "warnings": ["band_view_closed", "no_instrument"] }""").Problem);
+        Assert.Equal("band_view_closed", Map("""{ "connected": true, "part": true, "warnings": ["not_synced", "band_view_closed"] }""").Problem);
+        Assert.Equal("not_buffered", Map("""{ "connected": true, "part": true, "warnings": ["not_synced", "not_buffered"] }""").Problem);
     }
+
+    [Fact]
+    public void NoSong_NoInstrument_IsIdle_MutedNoInstrument()   // Link equips per song → not a problem before one
+    {
+        var r = Map("""{ "connected": true, "state": "idle", "warnings": ["no_instrument", "band_view_closed"] }""");
+        Assert.Equal(LinkChip.Idle, r.Chip);
+        Assert.Equal(LinkInstCol.NoInstrument, r.Inst);
+        Assert.Null(r.Problem);
+    }
+
+    [Fact]
+    public void NoPart_BandViewClosed_IsResting()
+    {
+        var r = Map("""{ "connected": true, "state": "idle", "part": false, "instrumentId": 3, "warnings": ["band_view_closed"] }""");
+        Assert.Equal(LinkChip.Resting, r.Chip);
+        Assert.Equal(LinkInstCol.NoPart, r.Inst);
+    }
+
+    [Theory]
+    [InlineData("""{ "connected": true, "state": "ready", "instrumentId": 3 }""", "Equip")]
+    [InlineData("""{ "connected": true, "state": "ready", "instrumentId": 0 }""", "NoInstrument")]
+    [InlineData("""{ "connected": true, "state": "ready" }""", "NoInstrument")]
+    [InlineData("""{ "connected": false, "awayMs": 99999, "instrumentId": 3 }""", "Equip")]
+    [InlineData("""{ "connected": false }""", "NoInstrument")]
+    public void InstrumentColumn_HeldOrNoInstrument(string json, string inst)
+        => Assert.Equal(Enum.Parse<LinkInstCol>(inst), Map(json).Inst);
+
 
     [Fact]
     public void UnknownWarning_IsIgnored()
@@ -89,7 +120,7 @@ public class LinkPlayersTests
     [InlineData("whatever", "Idle")]
     public void State_Chip(string state, string chip)
     {
-        var r = Map($$"""{ "connected": true, "state": "{{state}}", "part": true }""");
+        var r = Map($$"""{ "connected": true, "state": "{{state}}", "part": true, "instrumentId": 3 }""");
         Assert.Equal(Enum.Parse<LinkChip>(chip), r.Chip);
         Assert.Equal(LinkInstCol.Equip, r.Inst);
         Assert.True(r.ShowPing);

@@ -45,6 +45,9 @@ public sealed partial class Plugin
     private ColorRgba PrimaryFill() => Menu.MenuAccent;
     private ColorRgba PrimaryText() => EnsureContrast(White, PrimaryFill(), PillMinContrast);
     private ColorRgba NeutralText() => EnsureContrast(TextColor(), NeutralFill(), PillMinContrast);
+    // Error body text (join errors) = the Problem red, kept readable on the panel: #ff8a8b is ~7.7:1 on the dark themes
+    // (unchanged), but too pale on the Light panel, where EnsureContrast walks it toward black into a dark red.
+    private ColorRgba ErrorTextColor() => EnsureContrast(ProblemText, PanelColor(), PillMinContrast);
 
     // Nudges fg toward white (dark bg) or black (light bg) in 15% steps until it reaches minRatio against the opaque
     // bg (ChatTools Plugin.Tabs.cs → MultiTool Plugin.Style.cs). Pure struct math — no allocation per refresh.

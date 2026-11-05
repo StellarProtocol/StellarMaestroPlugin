@@ -49,7 +49,8 @@ public sealed partial class Plugin
             new ConditionalElement(() => _lkPhase == LinkPhase.Connecting,
                 new TextElement(() => _loc.T("mst.link.connecting"), Color: () => MutedColor())),
             new ConditionalElement(() => _lkPhase == LinkPhase.Off && _lkErrorKey.Length > 0,
-                new TextElement(() => _lkErrorKey.Length > 0 ? _loc.T(_lkErrorKey) : "", Color: () => MutedColor())),
+                // Red (not muted): a failed join must stand out.
+                new TextElement(() => _lkErrorKey.Length > 0 ? _loc.T(_lkErrorKey) : "", Color: () => ErrorTextColor())),
             new TextElement(() => _loc.T("mst.link.consent"), Color: () => MutedColor())),
         BuildLinkHowPanel(),   // Plugin.Link.How.cs
     }, Gap: 8f);

@@ -18,13 +18,15 @@ public sealed partial class Plugin
     private const int PlayerSlots = 16;
 
     // Column widths (fixed, so header and rows line up; the instrument column takes the rest). Row = 540 window − 2×12
-    // body − 2×10 panel − 2×6 tile = 484 inner: 3 + 10 + 130 + 72 + 44 + 5 gaps × 6 = 289 fixed → ~195 instrument.
+    // body − 2×10 panel − 9 scroll-bar inset − 2×6 tile = 475 inner: 3 + 10 + 130 + 72 + 44 + 5 gaps × 6 = 289 fixed
+    // → ~186 instrument.
     private const float PlayerBarW  = 3f;
     private const float PlayerDotW  = 10f;
     private const float PlayerNameW = 130f;
     private const float PlayerPingW = 44f;
     private const float PlayerColGap = 6f;
     private const float PlayerTilePadX = 6f;
+    private const float PlayerTilePadY = 3f;
 
     private readonly List<LinkPlayer> _lkPlayers = new();   // own row first, then server (join) order
     private readonly List<LinkPlayerRow> _lkPlayerRows = new();
@@ -89,18 +91,38 @@ public sealed partial class Plugin
         return _loc.TFormat("mst.link.players.count", _lkPlayers.Count, max, playing);
     }
 
+    // The row list RESERVES exactly PlayerRowsVisible rows at all times (so the window never changes height as people
+    // join / leave — user decision 2026-11-06) and scrolls past that: a FixedHeight ScrollElement (SDK ≥ 2.26; the hub
+    // pattern of Stellar-Design-Language.md). Height computed from the row build below, not measured:
+    //   tile  = chip 24 (ChipStrutHeight 22 + ChipPill PaddingY 1×2; the tallest cell) + PlayerTile PaddingY 3×2 = 30
+    //   pitch = the ListElement's own fixed 2 px slot spacing (WindowBuilder.Layout BuildList) — not RowGap
+    //   5 rows = 5×30 + 4×2 = 158.
+    // Unused slots are SetActive(false) by the ListElement → ignored by the content VLG (no blank space inside the
+    // scroll). The header stays OUTSIDE the scroll; "Loading players…" sits inside the reserved area.
+    private const int   PlayerRowsVisible = 5;
+    private const float PlayerRowHeight   = ChipStrutHeight + 2f * 1f + 2f * PlayerTilePadY;   // 30
+    private const float PlayerListGap     = 2f;
+    private const float PlayerListHeight  = PlayerRowsVisible * PlayerRowHeight + (PlayerRowsVisible - 1) * PlayerListGap;
+    // The scroll viewport is ALWAYS inset 9 px from the right for its bar (5 px bar + 4 px gap, WindowBuilder.Widgets
+    // BuildScroll), even when the bar auto-hides — so the header outside the scroll gets the same 9 px on its right or
+    // the State / Ping columns would sit 9 px right of the row columns.
+    private const float ScrollBarInset    = 9f;
+
     private HudElement BuildLinkPlayersPanel() => SectionPanelWithTrailing(
         () => _loc.T("mst.link.cap.players"), LinkPlayersHint, PlayersToggle(),
         new ConditionalElement(() => _lkPlayersShown, new ColumnElement(new HudElement[]
         {
-            new ConditionalElement(() => !_lkPlayersLoaded,
-                new TextElement(() => _loc.T("mst.link.players.loading"), Color: () => MutedColor()),
-                new ColumnElement(new HudElement[]
-                {
-                    PlayerHeaderRow(),
-                    new ListElement(() => Math.Min(_lkPlayers.Count, PlayerSlots), BuildPlayerSlots()),
-                }, Gap: 4f)),
+            new RowElement(new HudElement[]
+            {
+                new CellElement(PlayerHeaderRow(), Weight: 1f),
+                new SpacerElement(ScrollBarInset),
+            }, Gap: 0.01f),
+            new ScrollElement(new ConditionalElement(() => !_lkPlayersLoaded,
+                    new TextElement(() => _loc.T("mst.link.players.loading"), Color: () => MutedColor()),
+                    new ListElement(() => Math.Min(_lkPlayers.Count, PlayerSlots), BuildPlayerSlots())),
+                Height: PlayerListHeight) { FixedHeight = true },
         }, Gap: 4f)));
+
 
     // Small Hide/Show text toggle at the right of the caption row: muted bold 12 (same size as the caption, so the
     // collapsed panel is just the caption row) with a soft hover wash. Bare selectable = no tint/padding of its own.
@@ -132,7 +154,7 @@ public sealed partial class Plugin
 
     // A raised row tile (live TileColor), ~30 px: chip 24 + 2×3 padding.
     private static HudElement PlayerTile(HudElement row, Func<ColorRgba> fill) =>
-        new BubbleElement(row) { FillColorFn = () => fill(), PaddingX = PlayerTilePadX, PaddingY = 3f };
+        new BubbleElement(row) { FillColorFn = () => fill(), PaddingX = PlayerTilePadX, PaddingY = PlayerTilePadY };
 
     private HudElement[] BuildPlayerSlots()
     {

@@ -140,11 +140,18 @@ public sealed partial class Plugin
     // estimate of the game face — 120 cut it to "Gap between so…" in-game, so 140 leaves ~10 % headroom.
     private const float SliderLabelW = 140f;
     private const float SliderValueW = 50f;
-    private const float HelpSize     = 20f;    // the round "?" button: a 20 px circle
+    // The round "?" button: a 22 px circle. Must be SQUARE: the first build used a 20 px strut, but the bold-12 "?"
+    // line is 22 px tall (measured in-game 2026-11-06: the button drew 20 wide × 22 tall), so the row grew to 22 and
+    // the radius-10 tile became an oval. Side = that line height, so neither axis can grow.
+    private const float HelpSize     = 22f;
 
-    // The "?" button: a small round Neutral button (20 px circle, bold-12 "?"), lighter on hover, tinted with the accent
+    // The "?" button: a small round Neutral button (22 px circle, bold-12 "?"), lighter on hover, tinted with the accent
     // while its tip is open. Bare selectable = no padding / wash of its own, so the circle is exactly HelpSize and the
     // hover keeps its round shape; the whole circle is the click target. OnClickWithRect anchors the tip under it.
+    // Radius = side / 2. The framework's BubbleBg(r) sprite is 2r+4 texels with a 9-slice border of r+1, so on a 2r
+    // rect Unity scales the border down by 2r/(2r+2) (≈0.92 here): the arc is r texels drawn in ~r−1 px plus ~1 px of
+    // flat edge per side — within a pixel of a true circle. An exact circle would need the framework to bake a
+    // border == radius (or a dedicated circle sprite).
     private readonly Dictionary<string, bool> _helpHover = new();
 
     private HudElement HelpButtonCell(string key)

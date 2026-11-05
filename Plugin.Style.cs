@@ -5,10 +5,10 @@ using Stellar.Abstractions.Services;
 
 namespace Stellar.Maestro;
 
-// House style (Stellar Design Language, KB Stellar-Design-Language.md) for the Maestro Link window — copied from the
-// reference StellarMultiToolPlugin\Plugin.Style.cs and trimmed to what the Link window uses: theme-live tokens,
-// SectionPanel, 28 px pills, PillPair and the fixed-width status chip (72 px here: the Link chips carry longer words
-// than MultiTool's 64 px on/off chips). Needs SDK >= 2.26 (BubbleElement.FillColorFn) — Maestro is on 2.28.1.
+// House style (Stellar Design Language, KB Stellar-Design-Language.md) — the ONE kit every Maestro window builds from
+// (main, Settings, Library, Preview, Link). Copied from the reference StellarMultiToolPlugin\Plugin.Style.cs: theme-live
+// tokens, SectionPanel, 28 px pills, PillPair and the fixed-width status chip (72 px here: the Link chips carry longer
+// words than MultiTool's 64 px on/off chips). Needs SDK >= 2.26 (BubbleElement.FillColorFn) — Maestro is on 2.28.1.
 //
 // Toolkit limits behind some choices (WindowBuilder-Patterns.md):
 //   • Plain TextElement ignores FontSize on Menu windows (fixed 14px) — only the styled path (Bold/Emphasis) honours it,

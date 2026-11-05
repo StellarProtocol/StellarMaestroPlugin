@@ -123,26 +123,37 @@ public sealed partial class Plugin
 
     // Settings rows (house style, approved design 2026-11-06): every row ends in a "?" so the "?" column lines up
     // down the panel. Slider row = [label | round-knob slider | value | ↺ | ?]; toggle row = [toggle | label | … | ?].
-    private const float SliderLabelW = 120f;   // fits "Gap between songs" / "Monitor volume" on one line
+    // Label column: the longest slider label in any language is en "Gap between songs" ≈ 127 px (then fil "Puwang ng
+    // restrike" ≈ 122, "Volume ng monitor" ≈ 120), measured with Arial / Yu Gothic / Malgun / Leelawadee at 14 px as an
+    // estimate of the game face — 120 cut it to "Gap between so…" in-game, so 140 leaves ~10 % headroom.
+    private const float SliderLabelW = 140f;
     private const float SliderValueW = 50f;
-    private const float HelpLabelW   = 8f;     // "?" pill = 8 + 2×6 strut + 2×6 selectable = 32 px wide, 28 tall
+    private const float HelpSize     = 20f;    // the round "?" button: a 20 px circle
 
-    // The "?" pill: the Neutral 28 px pill, tinted with the accent while its tip is open. A plain "?" (ASCII) in the
-    // bold label is safe. OnClickWithRect gives the pill's rect so the tip anchors under it.
+    // The "?" button: a small round Neutral button (20 px circle, bold-12 "?"), lighter on hover, tinted with the accent
+    // while its tip is open. Bare selectable = no padding / wash of its own, so the circle is exactly HelpSize and the
+    // hover keeps its round shape; the whole circle is the click target. OnClickWithRect anchors the tip under it.
+    private readonly Dictionary<string, bool> _helpHover = new();
+
     private HudElement HelpButtonCell(string key)
         => new BubbleElement(new SelectableElement(
             new RowElement(new HudElement[]
             {
-                new SpacerElement(PillPadX, PillStrutHeight),
-                new TextElement(() => "?", Color: () => NeutralText(), Width: HelpLabelW, Align: TextAlign.Center,
-                    NoWrap: true, FontSize: 13) { Bold = true },
-                new SpacerElement(PillPadX, PillStrutHeight),
+                new SpacerElement(0f, HelpSize),   // height strut; the label box below sets the width
+                new TextElement(() => "?", Color: () => NeutralText(), Width: HelpSize, Align: TextAlign.Center,
+                    NoWrap: true, FontSize: 12) { Bold = true },
             }, Gap: 0.01f, Justify: RowJustify.Center),
-            OnClick: () => { })                       // real work is in OnClickWithRect (needs the pill's rect)
-            { OnClickWithRect = r => ToggleTip(key, r) })
+            OnClick: () => { })                       // real work is in OnClickWithRect (needs the button's rect)
+            {
+                Bare = true,
+                OnHover = over => _helpHover[key] = over,
+                OnClickWithRect = r => ToggleTip(key, r),
+            })
         {
-            FillColorFn = () => _tipKey == key && _tipWindow.IsShown ? Over(AccentColor() with { A = 0.35f }, NeutralFill()) : NeutralFill(),
-            PaddingX = 0f, PaddingY = 0f,
+            FillColorFn = () => _tipKey == key && _tipWindow.IsShown ? Over(AccentColor() with { A = 0.35f }, NeutralFill())
+                              : _helpHover.TryGetValue(key, out var h) && h ? Over(TextColor() with { A = 0.10f }, NeutralFill())
+                              : NeutralFill(),
+            CornerRadius = HelpSize / 2f, PaddingX = 0f, PaddingY = 0f,
         };
 
     // Registers tooltip content for `key` and returns its "?" pill. Append it as the LAST child of a row so the "?"

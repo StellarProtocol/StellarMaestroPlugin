@@ -22,9 +22,15 @@ public sealed partial class Plugin
     // Derived from _services.Theme.Colors on every call and handed to elements as Funcs, so a theme switch repaints on
     // the next refresh. Only SEMANTIC status colours are fixed (green / amber / red), like channel colours.
     private static readonly ColorRgba PanelShade  = new(0f, 0f, 0f, 0.20f);   // panel = background darkened
-    private const float TileTextMix     = 0.10f;   // raised tile = panel + 10% MenuText (lighter on dark, darker on light)
+    private const float TileTextMix     = 0.08f;   // raised tile = panel + 8% MenuText (lighter on dark, darker on light)
+    private const float TileAccentMix   = 0.06f;   // … + a 6% accent tint (user-approved 2026-11-06; MultiTool stays untinted)
     private const float NeutralMix      = 0.22f;   // neutral pill = panel + 22% MenuMuted
+    private const float NeutralAccentMix = 0.08f;  // … + an 8% accent tint, like the tiles (user-approved 2026-11-06)
     private const float PillMinContrast = 4.5f;    // WCAG AA for the pill labels
+    // Primary (accent) pills only: white labels down to 3:1 (WCAG AA for large/bold text), so the purple theme's
+    // #c8508f keeps a WHITE label (≈4.2:1) instead of flipping dark; a very light accent still flips (user-approved
+    // 2026-11-06, option B). Neutral / Caution / Danger keep 4.5.
+    private const float PrimaryMinContrast = 3.0f;
     private const float ChipWashAlpha   = 0.22f;   // coloured chip = bold text on a 22% pill of its colour
 
     private static readonly ColorRgba StatusGreen = Rgb(0x5fd38d);
@@ -41,10 +47,16 @@ public sealed partial class Plugin
     private ColorRgba MutedColor()  => Menu.MenuMuted;
     private ColorRgba AccentColor() => Menu.MenuAccent;
     private ColorRgba PanelColor()  => Over(PanelShade, Menu.MenuBackground);
-    private ColorRgba TileColor()   => Over(Menu.MenuText with { A = TileTextMix }, PanelColor());
-    private ColorRgba NeutralFill() => Over(Menu.MenuMuted with { A = NeutralMix }, PanelColor());
+    // Tile carries the theme accent so rows / cards read purple-pink on the purple theme (≈ #3b2e3b, the prototype's
+    // #3a2e41) instead of a neutral grey (#353238 measured in-game), and teal on teal.
+    private ColorRgba TileColor()   => Over(Menu.MenuAccent with { A = TileAccentMix },
+                                            Over(Menu.MenuText with { A = TileTextMix }, PanelColor()));
+    // Neutral carries the accent too (prototype #4a3c52 on the purple theme), so the pills sit in the same family as
+    // the tinted tiles instead of reading grey. Hover / disabled / the "?" open tint all derive from this.
+    private ColorRgba NeutralFill() => Over(Menu.MenuAccent with { A = NeutralAccentMix },
+                                            Over(Menu.MenuMuted with { A = NeutralMix }, PanelColor()));
     private ColorRgba PrimaryFill() => Menu.MenuAccent;
-    private ColorRgba PrimaryText() => EnsureContrast(White, PrimaryFill(), PillMinContrast);
+    private ColorRgba PrimaryText() => EnsureContrast(White, PrimaryFill(), PrimaryMinContrast);
     private ColorRgba NeutralText() => EnsureContrast(TextColor(), NeutralFill(), PillMinContrast);
     private ColorRgba DangerText()  => EnsureContrast(White, Over(DangerFill, PanelColor()), PillMinContrast);
     // Caution: a TINTED amber pill (the amber chip wash, opaque over the panel) so it reads one step below the SOLID red
@@ -89,6 +101,7 @@ public sealed partial class Plugin
     // (optional) is a Link addition — the house kit has no disabled pill: a disabled pill keeps its geometry, swallows
     // the click, and dims (label → Muted, fill → halfway to the panel), so toggling it never moves anything.
     private const float PillStrutHeight = 20f;
+    private const float PillRadius      = 14f;   // half the 28 px pill → fully round ends (0 = the 3 px chip rounding)
     private const float PillPadX        = 6f;
     private const float PillPairWidth   = 96f;   // label box for two-in-a-row pairs (weighted cells only split
                                                  // equally when both halves prefer the same width)
@@ -107,7 +120,7 @@ public sealed partial class Plugin
             OnClick: () => { if (enabled == null || enabled()) onClick(); }))
         {
             FillColorFn = () => enabled == null || enabled() ? fill() : Mix(PanelColor(), fill(), 0.5f),
-            PaddingX = 0f, PaddingY = 0f,
+            CornerRadius = PillRadius, PaddingX = 0f, PaddingY = 0f,
         };
 
     private HudElement PrimaryButton(Func<string> label, Action onClick, float width = 0f, Func<bool>? enabled = null) =>
@@ -168,23 +181,26 @@ public sealed partial class Plugin
     // Coloured = bold text in the (semantic) colour on a 22% wash of it; muted = regular MenuMuted text on a faint
     // MenuMuted pill. Two complete pills swapped by a Conditional wrapping the WHOLE pill (never a Conditional inside a
     // bubble's measured child — the bubble re-hug gotcha), both in the same ChipWidth cell with a height strut, so a
-    // state change never moves the row (bold text is taller than regular; the strut pins both to 24).
+    // state change never moves the row (bold text is taller than regular; the strut pins both to 24). `width` (default
+    // ChipWidth) lets a chip whose label varies (Loop: Off / All / One) take the width of its LONGEST label in any
+    // language, so cycling it never changes its size.
     private const float ChipWidth       = 72f;
     private const float ChipStrutHeight = 22f;
+    private const float ChipRadius      = (ChipStrutHeight + 2f) / 2f;   // half the 24 px chip → round ends
 
-    private HudElement StatusChip(Func<string> label, Func<ColorRgba?> color) => new ConditionalElement(
+    private HudElement StatusChip(Func<string> label, Func<ColorRgba?> color, float width = ChipWidth) => new ConditionalElement(
         () => color() != null,
         ChipPill(new TextElement(label, Color: () => color() ?? MutedColor(), Align: TextAlign.Center, NoWrap: true) { Bold = true },
-                 () => (color() ?? MutedColor()) with { A = ChipWashAlpha }),
+                 () => (color() ?? MutedColor()) with { A = ChipWashAlpha }, width),
         ChipPill(new TextElement(label, Color: () => MutedColor(), Align: TextAlign.Center, NoWrap: true),
-                 () => MutedColor() with { A = 0.15f }));
+                 () => MutedColor() with { A = 0.15f }, width));
 
-    private static HudElement ChipPill(TextElement text, Func<ColorRgba> fill) => new CellElement(
+    private static HudElement ChipPill(TextElement text, Func<ColorRgba> fill, float width) => new CellElement(
         new BubbleElement(new RowElement(new HudElement[]
             {
                 new SpacerElement(0f, ChipStrutHeight),   // width 0 + height > 0 = a non-flexible height strut
                 text,
             }, Gap: 0.01f, Justify: RowJustify.Center))
-        { FillColorFn = () => fill(), PaddingX = 4f, PaddingY = 1f },
-        Width: ChipWidth);
+        { FillColorFn = () => fill(), CornerRadius = ChipRadius, PaddingX = 4f, PaddingY = 1f },
+        Width: width);
 }

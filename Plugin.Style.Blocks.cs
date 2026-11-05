@@ -73,7 +73,7 @@ public sealed partial class Plugin
             }, Gap: 8f),
             OnClick: onOpen))
         {
-            FillColorFn = () => TileColor(), PaddingX = 0f, PaddingY = 0f,
+            FillColorFn = () => TileColor(), CornerRadius = TileRadius, PaddingX = 0f, PaddingY = 0f,
         };
 
     // ── glyph pills ───────────────────────────────────────────────────────────────────────────────────────────────
@@ -97,7 +97,7 @@ public sealed partial class Plugin
             OnClick: () => { if (enabled == null || enabled()) onClick(); }))
         {
             FillColorFn = () => enabled == null || enabled() ? NeutralFill() : Mix(PanelColor(), NeutralFill(), 0.5f),
-            PaddingX = 0f, PaddingY = 0f,
+            CornerRadius = PillRadius, PaddingX = 0f, PaddingY = 0f,
         };
 
     // ── round-knob slider ─────────────────────────────────────────────────────────────────────────────────────────
@@ -109,18 +109,38 @@ public sealed partial class Plugin
         => new(get, set, min, max, enabled) { SquareHandle = true, HandleSize = SliderKnobSize };
 
     // ── list tiles ────────────────────────────────────────────────────────────────────────────────────────────────
-    // A raised list row: the Tile fill (or a slightly lighter one while `selected`) around `row`. ListTileStrut pins
-    // the tile to 26 px (the queue / library rows) when the row holds a 26 px strut.
+    // A raised list row: the Tile fill (or a slightly lighter one while `selected`) around `row`; the row holds a strut
+    // that pins the tile to ListTileHeight. ⚠️ A VirtualList slot is a column layout that STRETCHES its one child to the
+    // full RowHeight (WindowBuilder.VirtualList: slot sizeDelta.y = RowHeight + a VLG), so a 26 px tile in a 28 px slot
+    // filled all 28 and the rows touched (in-game 2026-11-06). Each pooled row is therefore ListSlot(tile) = a column of
+    // [26 px tile, 2 px transparent spacer] whose preferred height equals the pitch, so nothing is stretched.
     private const float ListTileHeight = 26f;
-    private const float ListRowPitch   = ListTileHeight + 2f;   // VirtualList RowHeight IS the pitch: 2 px gap
+    private const float ListRowGap     = 2f;
+    private const float ListRowPitch   = ListTileHeight + ListRowGap;   // the VirtualList RowHeight
+
+    private static HudElement ListSlot(HudElement tile) => new ColumnElement(new HudElement[]
+    {
+        tile,
+        new SpacerElement(0f, ListRowGap),
+    }, Gap: 0.01f);
+
+    // Viewport height that shows exactly `rows` rows: the last row's 2 px gap falls outside, so the list ends flush
+    // with a tile.
+    private static float ListHeight(int rows) => rows * ListRowPitch - ListRowGap;
     private const float TilePadX       = 6f;
+    private const float TileRadius     = 6f;    // raised tiles / hub cards (the panels' rounding)
 
     private ColorRgba SelectedTileColor() => Over(Menu.MenuText with { A = 0.08f }, TileColor());
 
-    private HudElement ListTile(HudElement row, Func<bool>? selected = null) => new BubbleElement(row)
+    private ColorRgba HoverTileColor() => Over(Menu.MenuText with { A = 0.05f }, TileColor());
+
+    // `hovered` (optional): the row draws its OWN hover (a Bare selectable inside has no wash), so the whole tile —
+    // the trailing ✕ included — lights up as one piece.
+    private HudElement ListTile(HudElement row, Func<bool>? selected = null, Func<bool>? hovered = null) => new BubbleElement(row)
     {
-        FillColorFn = () => selected != null && selected() ? SelectedTileColor() : TileColor(),
-        PaddingX = 0f, PaddingY = 0f,
+        FillColorFn = () => selected != null && selected() ? SelectedTileColor()
+                          : hovered != null && hovered() ? HoverTileColor() : TileColor(),
+        CornerRadius = TileRadius, PaddingX = 0f, PaddingY = 0f,
     };
 
     // The selected row's 3 px accent bar at the tile's left edge (transparent when not selected, so nothing moves).
@@ -132,8 +152,9 @@ public sealed partial class Plugin
     // ── clickable chip ────────────────────────────────────────────────────────────────────────────────────────────
     // A StatusChip that toggles/cycles on click: a Bare selectable (no tint / padding of its own) around the chip, so
     // the on/off geometry stays the chip's 72×24.
-    private HudElement ChipToggle(Func<string> label, Func<bool> on, Action onClick) => new SelectableElement(
-        StatusChip(label, () => on() ? StatusGreen : (ColorRgba?)null), OnClick: onClick) { Bare = true };
+    private HudElement ChipToggle(Func<string> label, Func<bool> on, Action onClick, float width = ChipWidth)
+        => new SelectableElement(
+            StatusChip(label, () => on() ? StatusGreen : (ColorRgba?)null, width), OnClick: onClick) { Bare = true };
 
     // ── icon-only ✕ ───────────────────────────────────────────────────────────────────────────────────────────────
     // At rest a muted glyph; on hover a red glyph on a soft red rounded wash (house "Remove hover"). ⚠️ Pooled row: the

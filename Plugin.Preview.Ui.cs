@@ -11,10 +11,11 @@ namespace Stellar.Maestro;
 public sealed partial class Plugin
 {
     private const float PvOffsetLabelW  = 96f;   // shorter than SliderLabelW: the row also holds the "= Band delay" pill
-    private const float StemNameW       = 72f;
-    private const float StemInstW       = 84f;   // Pill dropdown (total width)
+    // Stem row widths: the NAME takes whatever is left (it was a fixed 72 px and cut "Piano pla…"): tile inner 404 −
+    // toggle 30 − instrument 80 − Sustain pill 108 − toggle 30 − "Tone" 32 − 5 gaps × 4 ≈ 104 px for the name.
+    private const float StemInstW       = 80f;   // Pill dropdown (total width; "Guitar" + ▾ still fits)
     private const float StemSustainLblW = 84f;   // "Sustain: Hold" label box → a 108 px pill
-    private const float StemToneLblW    = 36f;
+    private const float StemToneLblW    = 32f;
 
     private HudElement BuildPreviewRoot() => new ColumnElement(new HudElement[]
     {
@@ -149,7 +150,7 @@ public sealed partial class Plugin
         {
             new ToggleElement(Label: () => "", Get: Audible, Set: v => _previewSynth.SetMute(KeyAt(), !v)),
             new CellElement(new TextElement(() => Cap(KeyAt()), Color: () => Audible() ? TextColor() : MutedColor(), NoWrap: true)
-                { Ellipsize = true }, Width: StemNameW),
+                { Ellipsize = true }, Weight: 1f),
             new DropdownElement(Selected: () => InstrumentIndex(ModeAt()), Options: () => InstrumentNames,
                 OnSelect: i => SelectInstrument(KeyAt(), i), Width: StemInstW) { Style = DropdownStyle.Pill },   // overrides filename detection
             NeutralButton(() => _loc.T("mst.pv.sustain") + ": " + (NoSus() ? "—" : PedalName(KeyAt())),
@@ -158,7 +159,7 @@ public sealed partial class Plugin
                 Set: v => { if (!NoTone()) _previewSynth.SetApplyTone(KeyAt(), v); }, Enabled: () => !NoTone()),
             new CellElement(new TextElement(() => _loc.T("mst.pv.tone"), Color: () => NoTone() ? MutedColor() : TextColor(), NoWrap: true),
                 Width: StemToneLblW),
-        }, Gap: 6f))
+        }, Gap: 4f))
         {
             FillColorFn = () => TileColor(), CornerRadius = 6f, PaddingX = TilePadX, PaddingY = 3f,
         };

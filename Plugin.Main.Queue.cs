@@ -13,7 +13,9 @@ public sealed partial class Plugin
     private const int   QueueRowsVisible = 8;
     private const float QueueListHeight  = QueueRowsVisible * ListRowPitch - ListRowGap;   // 8 × 28 − 2 = 222
     private const int   QueuePoolSize    = QueueRowsVisible + 3;               // visible rows + margin
-    private const float QueueIndexColW   = 22f;
+    // Index column: a FIXED label box (TextElement Width, right-aligned) wide enough for "999", so every name starts
+    // at the same x whatever the number's width (a hugging text in a Cell let the names drift 1–2 px row to row).
+    private const float QueueIndexColW   = 26f;
     private const float PlaylistDropW    = 150f;
     private const float RenameLabelW     = 56f;   // "Rename" / "Save" share one label box, so the swap never moves a neighbour
 
@@ -128,8 +130,9 @@ public sealed partial class Plugin
                     {
                         new SpacerElement(2f, ListTileHeight),   // Bare = no padding: the strut alone is the 26 px tile
                         // One text (no Conditional): "▶" green while playing, else the muted 1-based index.
-                        new CellElement(new TextElement(() => Valid() ? (Playing() ? "▶" : (Idx() + 1).ToString()) : "",
-                            Color: () => Playing() ? StatusGreen : MutedColor(), NoWrap: true), Width: QueueIndexColW),
+                        new TextElement(() => Valid() ? (Playing() ? "▶" : (Idx() + 1).ToString()) : "",
+                            Color: () => Playing() ? StatusGreen : MutedColor(), Width: QueueIndexColW,
+                            Align: TextAlign.Right, NoWrap: true),
                         new CellElement(new TextElement(() => Valid() ? System.IO.Path.GetFileNameWithoutExtension(Active.Songs[Idx()]) : "",
                             Color: () => TextColor(), NoWrap: true) { Ellipsize = true }, Weight: 1f),
                         new CellElement(new TextElement(() => Valid() ? SongDurationText(Active.Songs[Idx()]) : "",

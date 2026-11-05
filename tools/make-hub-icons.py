@@ -1,108 +1,154 @@
-"""Draws the Maestro hub-card icons (Resources/icon-*.png).
+"""Regenerate the four flat, transparent Maestro hub icons with Pillow.
 
-64x64 rounded-square tiles in the Maestro gradient (#8a4fd8 -> #c8508f, diagonal) with a soft top-left highlight and a
-simple white symbol, matching maestro-icon.png. Drawn at 4x and downscaled with Lanczos for clean edges. Shown at
-32 px on the main window's hub cards (art does not follow the theme, Stellar-Design-Language.md section 7).
+Run from any directory (Windows development machine):
+    C:\\ProgramData\\anaconda3\\python.exe tools/make-hub-icons.py
 
-Run (Python comes from conda on the dev machine):  python tools/make-hub-icons.py
+The launcher reference, Resources/maestro-icon.png, is 128 x 128, pure white,
+with visible bounds (22, 9, 106, 119), 6-7 px stems, filled note heads and
+gently rounded corners. These silhouettes use comparable optical padding,
+7-9 px structural strokes and solid details, without tiles or effects.
+Geometry uses 128 px design units. Alpha is drawn at 4x and reduced with
+LANCZOS; RGB stays pure white, including partially transparent edge pixels.
+Only the four named Resources/icon-*.png files are written.
 """
+
 import math
-import os
+from pathlib import Path
 
-from PIL import Image, ImageChops, ImageDraw, ImageFilter
-
-OUT = 64
-SS = 4
-S = OUT * SS
-RADIUS = 13 * SS
-C0 = (0x8A, 0x4F, 0xD8)
-C1 = (0xC8, 0x50, 0x8F)
-WHITE = (255, 255, 255, 255)
-HERE = os.path.dirname(os.path.abspath(__file__))
-RES = os.path.join(HERE, "..", "Resources")
+from PIL import Image, ImageDraw
 
 
-def tile():
-    grad = Image.new("RGBA", (S, S))
-    px = grad.load()
-    for y in range(S):
-        for x in range(S):
-            t = (x + y) / (2 * (S - 1))
-            px[x, y] = tuple(int(C0[i] + (C1[i] - C0[i]) * t) for i in range(3)) + (255,)
-    # Soft top-left highlight.
-    glow = Image.new("L", (S, S), 0)
-    ImageDraw.Draw(glow).ellipse((-S * 0.35, -S * 0.45, S * 0.75, S * 0.45), fill=70)
-    glow = glow.filter(ImageFilter.GaussianBlur(S * 0.08))
-    white = Image.new("RGBA", (S, S), (255, 255, 255, 255))
-    grad = Image.composite(white, grad, glow)
-    mask = Image.new("L", (S, S), 0)
-    ImageDraw.Draw(mask).rounded_rectangle((0, 0, S - 1, S - 1), RADIUS, fill=255)
-    grad.putalpha(mask)
-    return grad
+RESOURCES = Path(__file__).resolve().parent.parent / "Resources"
+SUPERSAMPLE = 4
+DESIGN_SIZE = 128
 
 
-def u(v):  # 64-px design units -> supersampled pixels
-    return v * SS
+def box(draw, bounds, radius=0, fill=255):
+    draw.rounded_rectangle(
+        tuple(round(v * SUPERSAMPLE) for v in bounds),
+        radius=round(radius * SUPERSAMPLE),
+        fill=fill,
+    )
 
 
-def draw_library(d):
-    # A list: three bullets + lines.
-    for i, y in enumerate((20, 32, 44)):
-        d.ellipse((u(15), u(y - 3.5), u(22), u(y + 3.5)), fill=WHITE)
-        d.rounded_rectangle((u(27), u(y - 3), u(50), u(y + 3)), u(3), fill=WHITE)
+def ellipse(draw, bounds, fill=255):
+    draw.ellipse(tuple(round(v * SUPERSAMPLE) for v in bounds), fill=fill)
 
 
-def draw_link(d):
-    # Two interlocked rings.
-    w = u(5.5)
-    d.ellipse((u(10), u(18), u(38), u(46)), outline=WHITE, width=int(w))
-    d.ellipse((u(26), u(18), u(54), u(46)), outline=WHITE, width=int(w))
+def stroke(draw, points, width):
+    """A continuous stroke with round joins and caps, in design units."""
+    draw.line(
+        [(round(x * SUPERSAMPLE), round(y * SUPERSAMPLE)) for x, y in points],
+        fill=255,
+        width=round(width * SUPERSAMPLE),
+        joint="curve",
+    )
+    r = width / 2
+    for x, y in (points[0], points[-1]):
+        ellipse(draw, (x - r, y - r, x + r, y + r))
 
 
-def draw_preview(d):
-    # Headphones: a headband arc + two ear cups.
-    w = int(u(5.5))
-    d.arc((u(13), u(13), u(51), u(51)), 180, 360, fill=WHITE, width=w)
-    d.line((u(15.75), u(32), u(15.75), u(40)), fill=WHITE, width=w)
-    d.line((u(48.25), u(32), u(48.25), u(40)), fill=WHITE, width=w)
-    d.rounded_rectangle((u(12), u(34), u(23), u(51)), u(4), fill=WHITE)
-    d.rounded_rectangle((u(41), u(34), u(52), u(51)), u(4), fill=WHITE)
+def cubic(start, control1, control2, end):
+    """Sample a cubic curve densely enough for the 4x alpha mask."""
+    points = []
+    for step in range(1, 49):
+        t = step / 48
+        s = 1 - t
+        points.append(tuple(
+            s**3 * start[i] + 3 * s*s*t * control1[i]
+            + 3 * s*t*t * control2[i] + t**3 * end[i]
+            for i in (0, 1)
+        ))
+    return points
 
 
-def draw_settings(d, img):
-    # Gear: 8 teeth around a ring with a hole.
-    cx = cy = u(32)
-    teeth = 8
-    outer, inner = u(20), u(14.5)
-    pts = []
-    for k in range(teeth * 4):
-        a = (k / (teeth * 4)) * 2 * math.pi
-        r = outer if (k % 4) in (1, 2) else inner
-        pts.append((cx + r * math.cos(a), cy + r * math.sin(a)))
-    d.polygon(pts, fill=WHITE)
-    d.ellipse((cx - u(15.5), cy - u(15.5), cx + u(15.5), cy + u(15.5)), fill=WHITE)
-    # Punch the centre hole back to the tile.
-    hole = Image.new("L", img.size, 0)
-    ImageDraw.Draw(hole).ellipse((cx - u(6.5), cy - u(6.5), cx + u(6.5), cy + u(6.5)), fill=255)
-    return hole
+def library(draw):
+    # Three list rows and a filled eighth note; no enclosing card.
+    for y, right in ((25, 63), (54, 58), (83, 49)):
+        box(draw, (14, y, right, y + 8), radius=2)
+    box(draw, (94, 17, 101, 95), radius=2)
+    flag = [(98, 17), (114, 29), (114, 48), (98, 36)]
+    draw.polygon([(x * SUPERSAMPLE, y * SUPERSAMPLE) for x, y in flag], fill=255)
+    ellipse(draw, (73, 81, 101, 110))
 
 
-def make(name, painter):
-    base = tile()
-    glyph = Image.new("RGBA", (S, S), (0, 0, 0, 0))
-    d = ImageDraw.Draw(glyph)
-    hole = painter(d, glyph) if painter is draw_settings else painter(d)
-    if hole is not None:
-        a = glyph.getchannel("A")
-        glyph.putalpha(ImageChops.subtract(a, hole))
-    out = Image.alpha_composite(base, glyph).resize((OUT, OUT), Image.LANCZOS)
-    path = os.path.join(RES, name)
-    out.save(path)
-    print("wrote", os.path.normpath(path))
+def link(draw):
+    # Two open capsule loops interlock diagonally. The openings keep the
+    # crossings legible at 32 px instead of merging into a white knot.
+    upper = [(56, 70)]
+    upper += cubic(upper[-1], (64, 80), (79, 81), (88, 72))
+    upper.append((105, 55))
+    upper += cubic(upper[-1], (116, 44), (116, 27), (105, 17))
+    upper += cubic(upper[-1], (94, 6), (77, 6), (66, 17))
+    upper.append((55, 28))
+    lower = [(72, 58)]
+    lower += cubic(lower[-1], (64, 48), (49, 47), (40, 56))
+    lower.append((23, 73))
+    lower += cubic(lower[-1], (12, 84), (12, 101), (23, 111))
+    lower += cubic(lower[-1], (34, 122), (51, 122), (62, 111))
+    lower.append((73, 100))
+    for points in (upper, lower):
+        points = [(64 + (x - 64) * .88, 64 + (y - 64) * .88) for x, y in points]
+        stroke(draw, points, width=8)
+
+
+def preview(draw):
+    # An 8 px headband with solid ear cups, like the reference's thin stems
+    # and heavier note heads. The interior is genuinely transparent.
+    band = [(64 + 46 * math.cos(a), 62 + 46 * math.sin(a))
+            for a in (math.pi + math.pi * i / 128 for i in range(129))]
+    stroke(draw, band, width=8)
+    box(draw, (14, 61, 22, 88), radius=3)
+    box(draw, (106, 61, 114, 88), radius=3)
+    box(draw, (17, 65, 37, 111), radius=5)
+    box(draw, (91, 65, 111, 111), radius=5)
+
+
+def settings(draw):
+    # Eight broad teeth and a circular cutout; subtly soften tooth corners
+    # with short quadratic curves rather than any blur or shadow.
+    vertices = []
+    for tooth in range(8):
+        for degrees, radius in ((-22.5, 38), (-11, 50), (11, 50), (22.5, 38)):
+            a = math.radians(tooth * 45 + degrees)
+            point = (64 + radius * math.cos(a), 64 + radius * math.sin(a))
+            if not vertices or math.dist(point, vertices[-1]) > .01:
+                vertices.append(point)
+    if math.dist(vertices[0], vertices[-1]) < .01:
+        vertices.pop()
+    contour = []
+    for i, vertex in enumerate(vertices):
+        before, after = vertices[i - 1], vertices[(i + 1) % len(vertices)]
+
+        def inset(other):
+            fraction = min(2 / math.dist(vertex, other), .25)
+            return tuple(vertex[j] + (other[j] - vertex[j]) * fraction for j in (0, 1))
+
+        start, end = inset(before), inset(after)
+        for step in range(9):
+            t = step / 8
+            contour.append(tuple((1-t)**2 * start[j] + 2*(1-t)*t * vertex[j]
+                                 + t*t * end[j] for j in (0, 1)))
+    draw.polygon([(round(x * SUPERSAMPLE), round(y * SUPERSAMPLE)) for x, y in contour], fill=255)
+    ellipse(draw, (34, 34, 94, 94), fill=0)
+
+
+def main():
+    with Image.open(RESOURCES / "maestro-icon.png") as reference:
+        canvas = reference.size
+    if canvas != (DESIGN_SIZE, DESIGN_SIZE):
+        raise ValueError(f"Expected the 128 x 128 launcher reference, got {canvas}")
+    for name, painter in (("library", library), ("link", link),
+                          ("preview", preview), ("settings", settings)):
+        alpha = Image.new("L", tuple(v * SUPERSAMPLE for v in canvas), 0)
+        painter(ImageDraw.Draw(alpha))
+        alpha = alpha.resize(canvas, Image.Resampling.LANCZOS)
+        icon = Image.new("RGBA", canvas, (255, 255, 255, 0))
+        icon.putalpha(alpha)
+        path = RESOURCES / f"icon-{name}.png"
+        icon.save(path, optimize=False)
+        print(f"Wrote {path}")
 
 
 if __name__ == "__main__":
-    make("icon-library.png", draw_library)
-    make("icon-link.png", draw_link)
-    make("icon-preview.png", draw_preview)
-    make("icon-settings.png", draw_settings)
+    main()

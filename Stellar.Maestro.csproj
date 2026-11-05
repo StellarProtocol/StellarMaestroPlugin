@@ -35,8 +35,10 @@
   <ItemGroup>
     <!-- i18n P2: consumes IPluginServices.Localization (framework 2.1.0). House-style UI (BubbleElement.FillColorFn,
          SelectableElement.Bare, TextElement.Ellipsize) needs 2.26+; pinned to 2.28.1 with the Link players panel. -->
-    <PackageReference Include="Stellar.Abstractions" Version="2.28.1" />
-    <PackageReference Include="Stellar.Plugin.InteropRefs" Version="2.28.1" />
+    <!-- 2.29.0-local.ddradius.1 = framework PR #148 (DropdownElement.CornerRadius), from the workspace local feed
+         (nuget.config). TEMPORARY: switch to 2.29.0 once it is released, and drop the local feed. -->
+    <PackageReference Include="Stellar.Abstractions" Version="2.29.0-local.ddradius.1" />
+    <PackageReference Include="Stellar.Plugin.InteropRefs" Version="2.29.0-local.ddradius.1" />
   </ItemGroup>
 
   <!-- Launcher-tile icon (read by LogicalName) + localization catalogs. -->

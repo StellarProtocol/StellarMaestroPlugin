@@ -152,7 +152,7 @@ public sealed partial class Plugin
             new CellElement(new TextElement(() => Cap(KeyAt()), Color: () => Audible() ? TextColor() : MutedColor(), NoWrap: true)
                 { Ellipsize = true }, Weight: 1f),
             new DropdownElement(Selected: () => InstrumentIndex(ModeAt()), Options: () => InstrumentNames,
-                OnSelect: i => SelectInstrument(KeyAt(), i), Width: StemInstW) { Style = DropdownStyle.Pill },   // overrides filename detection
+                OnSelect: i => SelectInstrument(KeyAt(), i), Width: StemInstW) { Style = DropdownStyle.Pill, CornerRadius = PillRadius },   // overrides filename detection
             NeutralButton(() => _loc.T("mst.pv.sustain") + ": " + (NoSus() ? "—" : PedalName(KeyAt())),
                 () => CyclePedal(KeyAt()), StemSustainLblW, () => !NoSus()),
             new ToggleElement(Label: () => "", Get: () => !NoTone() && _previewSynth.GetApplyTone(KeyAt()),

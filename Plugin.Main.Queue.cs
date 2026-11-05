@@ -49,7 +49,7 @@ public sealed partial class Plugin
                 { SingleLine = true, FocusRequest = () => _renameFocusSeq },
             new RowElement(new HudElement[]
             {
-                new DropdownElement(() => _plIdx, PlaylistNames, OnPickPlaylist, Width: PlaylistDropW) { Style = DropdownStyle.Pill },
+                new DropdownElement(() => _plIdx, PlaylistNames, OnPickPlaylist, Width: PlaylistDropW) { Style = DropdownStyle.Pill, CornerRadius = PillRadius },
                 new SpacerElement(0f),   // flexible: the buttons sit at the right edge
             }, Gap: 6f)), Weight: 1f),
         NeutralButton(() => _loc.T("mst.pl.new"), OnNewPlaylist),

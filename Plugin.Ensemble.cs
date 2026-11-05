@@ -81,10 +81,8 @@ public sealed partial class Plugin
         }
     }
 
-    private HudElement BuildEnsembleSection() => new ColumnElement(new HudElement[]
-    {
-        new SeparatorElement(),
-        new TextElement(() => _loc.T("mst.ens.header"), Emphasis: true),
+    // ENSEMBLE panel of the Settings window (Plugin.Settings.cs).
+    private HudElement BuildEnsemblePanel() => SectionPanel(() => _loc.T("mst.ens.header"), null,
         HelpToggle("ensemble_sync",
             () => _bandEnsembleSync,
             v  => { _bandEnsembleSync = v; _cfg.Set<bool>("ensemble_sync", v); _cfg.Save(); },
@@ -102,9 +100,7 @@ public sealed partial class Plugin
             SetAutoAcceptEnsemble,
             () => _loc.T("mst.ens.autoAccept"),
             () => _loc.T("mst.ens.autoAccept.help")),
-        new TextElement(() => _loc.T("mst.ens.footer"),
-            Color: () => (ColorRgba?)_services.Theme.Colors.TextMuted),
-    }, Gap: 6f);
+        MutedLine(() => _loc.T("mst.ens.footer")));
 
     // Current server time (ms) in the SAME clock as the grid math: the game's Lua Z.ServerTime:GetServerTime(), which is
     // what the ensemble start timestamp is stamped against and what __b2base (= the EnsembleBaseMs we compute) is

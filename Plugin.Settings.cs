@@ -8,36 +8,75 @@ namespace Stellar.Maestro;
 // The Settings window: playback tuning, sound, Network Sync and Ensemble options, and their setters.
 public sealed partial class Plugin
 {
-    // The Settings window — playback tuning + the buffered-sync toggle and its Network Settings button.
-    private HudElement BuildSettingsRoot() => new ColumnElement(new HudElement[]
+    // The Settings window (house style, approved design 2026-11-06; the old Network window is merged in as NETWORK SYNC):
+    // four panels of rows that each end in "?", then a full-width Close. Network / Ensemble rows grey out exactly as
+    // before (they need Network Sync); the three network sliders, which used to sit behind the disabled "Network
+    // Settings" button, now grey out the same way.
+    private HudElement BuildSettingsRoot()
     {
-        new TextElement(() => _loc.T("mst.settings.header"), Emphasis: true),
+        HudElement body = new ColumnElement(new HudElement[]
+        {
+            BuildPlaybackPanel(),
+            BuildSoundPanel(),
+            BuildNetSyncPanel(),
+            BuildEnsemblePanel(),   // Plugin.Ensemble.cs
+        }, Gap: 8f);
+        // Scroll only when the panels are taller than the screen. The toolkit has no "max height" for an auto-height
+        // window, so this is decided once, here, from the computed panel height vs the canvas height (a resolution
+        // change after startup is not re-checked). When it fits, no scroll viewport (and no scrollbar lane) at all.
+        float canvasH = _services.Framework.CanvasHeight > 1f ? _services.Framework.CanvasHeight : _services.Framework.ScreenHeight;
+        float room    = canvasH - SettingsChromeH;
+        if (room > 200f && SettingsBodyHeight > room)
+            body = new ScrollElement(body, Height: room) { FixedHeight = true };
+        return new ColumnElement(new HudElement[]
+        {
+            body,
+            NeutralButton(() => _loc.T("mst.close"), () => _settingsWindow.SetVisible(false)),
+        }, Gap: 8f);
+    }
+
+    // Body height from the row build, not measured: a row = the 28 px "?" pill; a panel = 2×8 padding + the bold-12
+    // caption row (~17) + rows × (28 + 6 gap); Ensemble adds its two-line footer (~6 + 40). Chrome = title bar, body
+    // padding, the Close pill and a margin to the screen edges.
+    private const float SettingsRowH      = 28f + 6f;
+    private const float SettingsPanelBase = 16f + 17f;
+    private const float SettingsBodyHeight = 4 * SettingsPanelBase + (6 + 3 + 7 + 3) * SettingsRowH + 46f + 3 * 8f;
+    private const float SettingsChromeH   = 180f;
+
+    private HudElement BuildPlaybackPanel() => SectionPanel(() => _loc.T("mst.cap.playback"), null,
         SliderRow("transpose", () => _loc.T("mst.set.transpose"),
-            new SliderElement(Get: () => _bandTranspose, Set: v => SetTranspose((int)System.MathF.Round(v)), Min: -48f, Max: 48f),
+            RoundSlider(() => _bandTranspose, v => SetTranspose((int)MathF.Round(v)), -48f, 48f),
             () => $"{(_bandTranspose >= 0 ? "+" : "")}{_bandTranspose}",
             () => SetTranspose(0),
             () => _loc.T("mst.set.transpose.help")),
-        SliderRow("hold_ms", () => _loc.T("mst.set.hold"),
-            new SliderElement(Get: () => _bandHoldMs, Set: v => SetHold((int)System.MathF.Round(v)), Min: -500f, Max: 2000f),
-            () => $"{(_bandHoldMs >= 0 ? "+" : "")}{_bandHoldMs}",
-            () => SetHold(0),
-            () => _loc.T("mst.set.hold.help")),
         SliderRow("tempo_pct", () => _loc.T("mst.set.tempo"),
-            new SliderElement(Get: () => _bandTempoPct, Set: v => SetTempo((int)System.MathF.Round(v)), Min: 25f, Max: 400f),
+            RoundSlider(() => _bandTempoPct, v => SetTempo((int)MathF.Round(v)), 25f, 400f),
             () => $"{_bandTempoPct}%",
             () => SetTempo(100),
             () => _loc.T("mst.set.tempo.help")),
+        SliderRow("hold_ms", () => _loc.T("mst.set.hold"),
+            RoundSlider(() => _bandHoldMs, v => SetHold((int)MathF.Round(v)), -500f, 2000f),
+            () => $"{(_bandHoldMs >= 0 ? "+" : "")}{_bandHoldMs}",
+            () => SetHold(0),
+            () => _loc.T("mst.set.hold.help")),
         SliderRow("max_poly", () => _loc.T("mst.set.maxpoly"),
-            new SliderElement(Get: () => _bandMaxPoly, Set: v => SetMaxPoly((int)System.MathF.Round(v)), Min: 0f, Max: 16f),
+            RoundSlider(() => _bandMaxPoly, v => SetMaxPoly((int)MathF.Round(v)), 0f, 16f),
             () => _bandMaxPoly == 0 ? _loc.T("mst.off") : _bandMaxPoly.ToString(),
             () => SetMaxPoly(0),
             () => _loc.T("mst.set.maxpoly.help")),
         SliderRow("restrike_gap", () => _loc.T("mst.set.restrike"),
-            new SliderElement(Get: () => _bandRestrikeGapMs, Set: v => SetRestrikeGap((int)System.MathF.Round(v)), Min: 0f, Max: 100f),
+            RoundSlider(() => _bandRestrikeGapMs, v => SetRestrikeGap((int)MathF.Round(v)), 0f, 100f),
             () => _bandRestrikeGapMs == 0 ? _loc.T("mst.off") : $"{_bandRestrikeGapMs}ms",
             () => SetRestrikeGap(33),   // reset to the default (matches Plugin.cs config-load default + help text)
             () => _loc.T("mst.set.restrike.help")),
-        BuildMonitorVolumeRow(),
+        SliderRow("gap_sec", () => _loc.T("mst.pl.gap"),   // moved here from the queue
+            RoundSlider(() => _gapSec, v => SetGap((int)MathF.Round(v)), 0f, 15f),
+            () => _gapSec == 0 ? _loc.T("mst.off") : $"{_gapSec}s",
+            () => SetGap(0),
+            () => _loc.T("mst.pl.gap.help")));
+
+    private HudElement BuildSoundPanel() => SectionPanel(() => _loc.T("mst.cap.sound"), null,
+        BuildMonitorVolumeRow(),   // Plugin.Volume.cs
         HelpToggle("force_sustain",
             () => _bandForceSustain,
             SetForceSustain,
@@ -47,14 +86,12 @@ public sealed partial class Plugin
             () => _bandApplyTone,
             OnToggleApplyTone,
             () => _loc.T("mst.set.applyTone"),
-            () => _loc.T("mst.set.applyTone.help")),
-        HelpToggle("relay_tone",
-            () => _bandRelayTone,
-            OnToggleRelayTone,
-            () => _loc.T("mst.set.relayTone"),
-            () => _loc.T("mst.set.relayTone.help"),
-            // Only meaningful in buffered Network Sync mode (it rewrites the buffered Tone record) with tone applied.
-            enabled: () => _bandNetPrebuffer && _bandApplyTone),
+            () => _loc.T("mst.set.applyTone.help")));
+
+    // NETWORK SYNC: caption hint = a green "On" / muted "Off" (a trailing coloured text; the plain hint is always muted).
+    private HudElement BuildNetSyncPanel() => SectionPanelWithTrailing(() => _loc.T("mst.cap.netSync"), null,
+        new TextElement(() => _loc.T(_bandNetPrebuffer ? "mst.state.on" : "mst.state.off"),
+            Color: () => _bandNetPrebuffer ? StatusGreen : MutedColor(), NoWrap: true),
         HelpToggle("net_prebuffer",
             () => _bandNetPrebuffer,
             SetNetPrebuffer,
@@ -74,10 +111,33 @@ public sealed partial class Plugin
             () => _loc.T("mst.set.keyviz"),
             () => _loc.T("mst.set.keyviz.help"),
             enabled: () => _bandNetPrebuffer),
-        new ButtonElement(Label: () => _loc.T("mst.btn.netSettings"), OnClick: () => _networkWindow.SetVisible(true),
-                          Enabled: () => _bandNetPrebuffer, Width: 320f),
-        BuildEnsembleSection(),
-    }, Gap: 8f);
+        HelpToggle("relay_tone",
+            () => _bandRelayTone,
+            OnToggleRelayTone,
+            () => _loc.T("mst.set.relayTone"),
+            () => _loc.T("mst.set.relayTone.help"),
+            // Only meaningful in buffered Network Sync mode (it rewrites the buffered Tone record) with tone applied.
+            enabled: () => _bandNetPrebuffer && _bandApplyTone),
+        SliderRow("net_ahead", () => _loc.T("mst.net.lookahead"),
+            RoundSlider(() => _bandAheadMs, v => SetAhead((int)MathF.Round(v)), 100f, 1500f, NetSyncOn),
+            () => $"{_bandAheadMs}ms",
+            () => SetAhead(400),
+            () => _loc.T("mst.net.lookahead.desc"),
+            NetSyncOn),
+        SliderRow("net_batch", () => _loc.T("mst.net.sendEvery"),
+            RoundSlider(() => _bandBatchMs, v => SetBatch((int)MathF.Round(v)), 100f, 400f, NetSyncOn),
+            () => $"{_bandBatchMs}ms",
+            () => SetBatch(100),
+            () => _loc.T("mst.net.sendEvery.desc"),
+            NetSyncOn),
+        SliderRow("tone_lead", () => _loc.T("mst.net.tonelead"),
+            RoundSlider(() => _bandToneLeadMs, v => SetToneLead((int)MathF.Round(v)), 0f, 500f, NetSyncOn),
+            () => $"{_bandToneLeadMs}ms",
+            () => SetToneLead(120),
+            () => _loc.T("mst.net.tonelead.desc"),
+            NetSyncOn));
+
+    private bool NetSyncOn() => _bandNetPrebuffer;
 
     private void SetTranspose(int v)
     {

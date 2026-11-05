@@ -38,7 +38,7 @@ public sealed partial class Plugin
     }
 
     private HudElement BuildMonitorVolumeRow() => SliderRow("monitor_volume", () => _loc.T("mst.monitorVol"),
-        new SliderElement(Get: () => _monitorVol, Set: v => SetMonitorVolume((int)System.MathF.Round(v)), Min: 0f, Max: 100f),
+        RoundSlider(() => _monitorVol, v => SetMonitorVolume((int)System.MathF.Round(v)), 0f, 100f),
         () => $"{_monitorVol}",
         () => SetMonitorVolume(0),
         () => _loc.T("mst.monitorVol.help"));

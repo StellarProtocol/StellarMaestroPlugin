@@ -6,12 +6,12 @@ using Stellar.Abstractions.Services;
 namespace Stellar.Maestro;
 
 // The main window's QUEUE panel (approved design 2026-11-06): playlist Pill dropdown + New / Rename / ✕ (delete, with
-// the house confirmation), the song list (raised 26 px tiles, exactly QueueRowsVisible rows then scrolling), and the
-// Auto next / Loop / Shuffle chips + move ▲ ▼ + "Add songs". Queue logic itself is Plugin.Playlist.cs.
+// the house confirmation), the song list (raised 26 px tiles 2 px apart, exactly QueueRowsVisible rows then scrolling),
+// the Auto next / Loop / Shuffle chips, and move ▲ ▼ + "Add songs". Queue logic itself is Plugin.Playlist.cs.
 public sealed partial class Plugin
 {
     private const int   QueueRowsVisible = 8;
-    private const float QueueListHeight  = QueueRowsVisible * ListRowPitch;   // 8 × 28 = 224 (last row's 2 px gap at the bottom)
+    private const float QueueListHeight  = QueueRowsVisible * ListRowPitch - ListRowGap;   // 8 × 28 − 2 = 222
     private const int   QueuePoolSize    = QueueRowsVisible + 3;               // visible rows + margin
     private const float QueueIndexColW   = 22f;
     private const float PlaylistDropW    = 150f;
@@ -20,6 +20,7 @@ public sealed partial class Plugin
     private int  _queueWindowFirst;
     private bool _queueScrollReset;
     private readonly HoverSlots _queueRemoveHover = new(QueuePoolSize);
+    private readonly HoverSlots _queueRowHover    = new(QueuePoolSize);
 
     private bool   _renaming;          // the dropdown is replaced by a name field until Save / Enter
     private string _renameDraft = "";
@@ -102,10 +103,12 @@ public sealed partial class Plugin
             Height:    QueueListHeight)
         { ResetScroll = () => { var r = _queueScrollReset; _queueScrollReset = false; return r; } });
 
-    // Row = [accent bar (selected) | index or green ▶ (playing) | name | length | ✕] on a raised tile (lighter when
-    // selected). A click on the row selects it (Play then plays it); ✕ removes it at once. The ✕ is a SIBLING of the
-    // row's selectable, not inside it, so a ✕ click can't also select. Every Func re-resolves the logical index
-    // (first + slot) because rows shift under a slot when one is removed.
+    // Row = [accent bar (selected) | index or green ▶ (playing) | name | length | ✕] on ONE raised tile (lighter when
+    // selected or hovered). A click on the row selects it (Play then plays it); ✕ removes it at once. The ✕ sits inside
+    // the tile but is a SIBLING of the row's selectable, not inside it, so a ✕ click can't also select. The selectable
+    // is Bare (no wash of its own, which used to stop short of the ✕ and made it look outside the row): the tile draws
+    // the hover instead. Every Func re-resolves the logical index (first + slot) because rows shift under a slot when
+    // one is removed; the hover flags are keyed per slot + item for the same reason.
     private HudElement[] BuildQueuePool()
     {
         var pool = new HudElement[QueuePoolSize];
@@ -118,12 +121,12 @@ public sealed partial class Plugin
             bool Playing() => Valid() && Idx() == _nowPlaying;
             string? Id()   => Valid() ? $"{_plIdx}:{Idx()}:{Active.Songs[Idx()]}" : null;
 
-            pool[s] = ListTile(new RowElement(new HudElement[]
+            pool[s] = ListSlot(ListTile(new RowElement(new HudElement[]
             {
                 AccentBar(Sel),
                 new CellElement(new SelectableElement(new RowElement(new HudElement[]
                     {
-                        new SpacerElement(0f, ListTileHeight - 8f),   // + the selectable's 4 + 4 = the 26 px tile
+                        new SpacerElement(2f, ListTileHeight),   // Bare = no padding: the strut alone is the 26 px tile
                         // One text (no Conditional): "▶" green while playing, else the muted 1-based index.
                         new CellElement(new TextElement(() => Valid() ? (Playing() ? "▶" : (Idx() + 1).ToString()) : "",
                             Color: () => Playing() ? StatusGreen : MutedColor(), NoWrap: true), Width: QueueIndexColW),
@@ -132,24 +135,42 @@ public sealed partial class Plugin
                         new CellElement(new TextElement(() => Valid() ? SongDurationText(Active.Songs[Idx()]) : "",
                             Color: () => MutedColor(), Align: TextAlign.Right, NoWrap: true), Width: DurationColW),
                     }, Gap: 6f),
-                    OnClick: () => SelectQueue(Idx())), Weight: 1f),
+                    OnClick: () => SelectQueue(Idx()))
+                    {
+                        Bare = true,
+                        OnHover = over => { _queueRowHover.Over[slot] = over; _queueRowHover.Id[slot] = Id(); },
+                    }, Weight: 1f),
                 RemoveIcon(_queueRemoveHover, slot, Id, () => { if (Valid()) RemoveFromQueue(Idx()); }),
                 new SpacerElement(2f, 1f),
-            }, Gap: 4f), Sel);
+            }, Gap: 4f), Sel, () => _queueRowHover.Get(slot, Id())));
         }
         return pool;
     }
 
-    // ── bottom row: chips + move + Add songs ──────────────────────────────────────────────────────────────────────
-    // Gap 4 (not 6): 3 × 72 chips + the two arrow pills + the Add pill just fit the 416 px panel row.
-    private HudElement BuildQueueControls() => new RowElement(new HudElement[]
+    // ── under the list: chips row, then move + Add songs ──────────────────────────────────────────────────────────
+    // Each chip has a FIXED width = its longest label in any language and (Loop) any state + chip padding + margin,
+    // so cycling Loop Off → All → One never resizes it. Measured with the Windows UI fonts at bold 14 (Arial / Yu
+    // Gothic / Malgun / Leelawadee — estimates of the game face): Auto next 67 (en/fil), Loop 100 (th "วนซ้ำ: เพลงเดียว"),
+    // Shuffle 70 (ja "シャッフル"). 84 + 116 + 84 + the arrows (~38 each) + "+ Tambah lagu" (~117) + gaps ≈ 500 > the
+    // 416 px panel row, so the chips get their own row and ▲ ▼ + Add songs sit right-aligned on the next.
+    private const float ChipAutoW    = 84f;
+    private const float ChipLoopW    = 116f;
+    private const float ChipShuffleW = 84f;
+
+    private HudElement BuildQueueControls() => new ColumnElement(new HudElement[]
     {
-        ChipToggle(() => _loc.T("mst.pl.autoAdvance"), () => _autoAdvance, ToggleAutoAdvance),
-        ChipToggle(() => _loc.T("mst.pl.loop") + ": " + LoopName(), () => _loopMode != 0, CycleLoop),
-        ChipToggle(() => _loc.T("mst.pl.shuffle"), () => _shuffle, ToggleShuffle),
-        new SpacerElement(0f),
-        GlyphPill(() => "▲", () => MoveQueue(-1), GlyphLabelW, () => _queueSel > 0 && _queueSel < Active.Songs.Count),
-        GlyphPill(() => "▼", () => MoveQueue(+1), GlyphLabelW, () => _queueSel >= 0 && _queueSel < Active.Songs.Count - 1),
-        PrimaryButton(() => _loc.T("mst.pl.addSongs"), OpenLibrary),
-    }, Gap: 4f);
+        new RowElement(new HudElement[]
+        {
+            ChipToggle(() => _loc.T("mst.pl.autoAdvance"), () => _autoAdvance, ToggleAutoAdvance, ChipAutoW),
+            ChipToggle(() => _loc.T("mst.pl.loop") + ": " + LoopName(), () => _loopMode != 0, CycleLoop, ChipLoopW),
+            ChipToggle(() => _loc.T("mst.pl.shuffle"), () => _shuffle, ToggleShuffle, ChipShuffleW),
+        }, Gap: 6f),
+        new RowElement(new HudElement[]
+        {
+            new SpacerElement(0f),
+            GlyphPill(() => "▲", () => MoveQueue(-1), GlyphLabelW, () => _queueSel > 0 && _queueSel < Active.Songs.Count),
+            GlyphPill(() => "▼", () => MoveQueue(+1), GlyphLabelW, () => _queueSel >= 0 && _queueSel < Active.Songs.Count - 1),
+            PrimaryButton(() => _loc.T("mst.pl.addSongs"), OpenLibrary),
+        }, Gap: 6f),
+    }, Gap: 6f);
 }

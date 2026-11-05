@@ -11,7 +11,7 @@ public sealed partial class Plugin
     // The Library window (house style, approved design 2026-11-06): search field + Rescan / Open folder, then the SONGS
     // panel — raised 26 px tiles, exactly LibraryRowsVisible rows tall then scrolling — and a muted "Adds to" footer.
     private const int   LibraryRowsVisible = 15;
-    private const float LibraryListHeight  = LibraryRowsVisible * ListRowPitch;   // 15 × 28 = 420 (last row's 2 px gap at the bottom)
+    private const float LibraryListHeight  = LibraryRowsVisible * ListRowPitch - ListRowGap;   // 15 × 28 − 2 = 418
     private readonly HoverSlots _searchClearHover = new(1);
 
     private HudElement BuildLibraryRoot() => new ColumnElement(new HudElement[]
@@ -126,23 +126,31 @@ public sealed partial class Plugin
         ApplyLibraryFilter();
     }
 
-    // Row = [name (ellipsized) | length (muted) | green "+"] on a raised tile; a click anywhere adds the song.
+    // Row = [name (ellipsized) | length (muted) | green "+"] on a raised rounded tile 2 px from the next; a click anywhere
+    // adds the song. Bare selectable + a tile-drawn hover, so the hover keeps the tile's rounded shape.
+    private readonly HoverSlots _songRowHover = new(SongPoolSize);
+
     private HudElement[] BuildSongPool()
     {
         var pool = new HudElement[SongPoolSize];
         for (int s = 0; s < SongPoolSize; s++)
         {
             int slot = s;
-            pool[s] = ListTile(new SelectableElement(new RowElement(new HudElement[]
+            pool[s] = ListSlot(ListTile(new SelectableElement(new RowElement(new HudElement[]
                 {
-                    new SpacerElement(0f, ListTileHeight - 8f),   // + the selectable's 4 + 4 = the 26 px tile
+                    new SpacerElement(TilePadX, ListTileHeight),   // Bare = no padding: the strut alone is the 26 px tile
                     new CellElement(new TextElement(() => SongSlotLabel(slot), Color: () => TextColor(), NoWrap: true)
                         { Ellipsize = true }, Weight: 1f),
                     new CellElement(new TextElement(() => SongSlotDuration(slot), Color: () => MutedColor(),
                         Align: TextAlign.Right, NoWrap: true), Width: DurationColW),
                     new TextElement(() => "+", Color: () => StatusGreen, NoWrap: true, FontSize: 16) { Bold = true },
+                    new SpacerElement(1f, 1f),   // + the 6 px row gap = the right margin (Bare has no padding)
                 }, Gap: 6f),
-                OnClick: () => AddLibraryToQueue(_songWindowFirst + slot)));
+                OnClick: () => AddLibraryToQueue(_songWindowFirst + slot))
+                {
+                    Bare = true,
+                    OnHover = over => { _songRowHover.Over[slot] = over; _songRowHover.Id[slot] = SongSlotLabel(slot); },
+                }, hovered: () => _songRowHover.Get(slot, SongSlotLabel(slot))));
         }
         return pool;
     }

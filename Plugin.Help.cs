@@ -140,12 +140,15 @@ public sealed partial class Plugin
     // estimate of the game face — 120 cut it to "Gap between so…" in-game, so 140 leaves ~10 % headroom.
     private const float SliderLabelW = 140f;
     private const float SliderValueW = 50f;
-    // The round "?" button: a 22 px circle. Must be SQUARE: the first build used a 20 px strut, but the bold-12 "?"
-    // line is 22 px tall (measured in-game 2026-11-06: the button drew 20 wide × 22 tall), so the row grew to 22 and
-    // the radius-10 tile became an oval. Side = that line height, so neither axis can grow.
-    private const float HelpSize     = 22f;
+    // The round "?" button: a 24 px circle. Must be SQUARE: the first build used a 20 px strut, but the bold-12 "?"
+    // line is 22 px tall (measured in-game 2026-11-06: the button drew 20 wide × 22 tall, an oval). Like the pill
+    // labels, the "?" sat high in that line (ink ≈ 5..14 of 22: 5 above, 7 below), so it goes under a 2 px spacer
+    // (HelpTextDrop): 2 + 22 = 24 = the side, which moves the glyph ~1 px down within a centred 24 px circle.
+    private const float HelpTextDrop = 2f;
+    private const float HelpLineH    = 22f;
+    private const float HelpSize     = HelpLineH + HelpTextDrop;
 
-    // The "?" button: a small round Neutral button (22 px circle, bold-12 "?"), lighter on hover, tinted with the accent
+    // The "?" button: a small round Neutral button (24 px circle, bold-12 "?"), lighter on hover, tinted with the accent
     // while its tip is open. Bare selectable = no padding / wash of its own, so the circle is exactly HelpSize and the
     // hover keeps its round shape; the whole circle is the click target. OnClickWithRect anchors the tip under it.
     // Radius = side / 2. The framework's BubbleBg(r) sprite is 2r+4 texels with a 9-slice border of r+1, so on a 2r
@@ -159,8 +162,12 @@ public sealed partial class Plugin
             new RowElement(new HudElement[]
             {
                 new SpacerElement(0f, HelpSize),   // height strut; the label box below sets the width
-                new TextElement(() => "?", Color: () => NeutralText(), Width: HelpSize, Align: TextAlign.Center,
-                    NoWrap: true, FontSize: 12) { Bold = true },
+                new ColumnElement(new HudElement[]
+                {
+                    new SpacerElement(0f, HelpTextDrop),
+                    new TextElement(() => "?", Color: () => NeutralText(), Width: HelpSize, Align: TextAlign.Center,
+                        NoWrap: true, FontSize: 12) { Bold = true },
+                }, Gap: 0.01f),
             }, Gap: 0.01f, Justify: RowJustify.Center),
             OnClick: () => { })                       // real work is in OnClickWithRect (needs the button's rect)
             {

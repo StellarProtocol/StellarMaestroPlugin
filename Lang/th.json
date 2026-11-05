@@ -162,6 +162,7 @@
   "mst.link.warn.notSynced": "กำลังรอเวลาเซิร์ฟเวอร์ของเกม…",
   "mst.link.warn.stopped": "คุณหยุดพาร์ตของคุณแล้ว จะกลับมาเล่นในเพลงถัดไป",
   "mst.link.stopPart": "หยุดพาร์ตของฉัน",
+  "mst.link.resumePart": "เล่นพาร์ตของฉันต่อ",
   "mst.link.disconnect": "ตัดการเชื่อมต่อ",
   "mst.link.cap.room": "ห้อง",
   "mst.link.cap.nowPlaying": "กำลังเล่น",

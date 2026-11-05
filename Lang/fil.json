@@ -162,6 +162,7 @@
   "mst.link.warn.notSynced": "Naghihintay sa server clock ng laro…",
   "mst.link.warn.stopped": "Itinigil mo ang bahagi mo. Babalik ito sa susunod na kanta.",
   "mst.link.stopPart": "Itigil ang bahagi ko",
+  "mst.link.resumePart": "Ituloy ang bahagi ko",
   "mst.link.disconnect": "Idiskonekta",
   "mst.link.cap.room": "Room",
   "mst.link.cap.nowPlaying": "Tumutugtog ngayon",

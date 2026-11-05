@@ -66,8 +66,13 @@ public sealed partial class Plugin
         }, Gap: 8f),
         BuildLinkPlayersPanel(),   // Plugin.Link.Players.cs
         PillPair(
-            CautionButton(() => _loc.T("mst.link.stopPart"), StopMyPart, PillPairWidth, () => _lkPartActive),
-            DangerButton(() => _loc.T("mst.link.disconnect"), () => EndLink(""), PillPairWidth)),
+            // Stop / Resume share the slot: two complete pills swapped by a Conditional around the WHOLE pill, both with
+            // the same label box, so the swap never moves anything (Primary "Resume" vs amber "Stop", faded when off).
+            new ConditionalElement(() => LinkPartButtonState() == LinkPartButton.Resume,
+                PrimaryButton(() => _loc.T("mst.link.resumePart"), ResumeMyPart, LinkActionLabelW),
+                CautionButton(() => _loc.T("mst.link.stopPart"), StopMyPart, LinkActionLabelW,
+                    () => LinkPartButtonState() == LinkPartButton.Stop)),
+            DangerButton(() => _loc.T("mst.link.disconnect"), () => EndLink(""), LinkActionLabelW)),
     }, Gap: 8f);
 
     // One fixed-width top cell whose panel stretches to the row's height, so ROOM and NOW PLAYING are equally tall

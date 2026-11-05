@@ -162,6 +162,7 @@
   "mst.link.warn.notSynced": "Waiting for the game's server clock…",
   "mst.link.warn.stopped": "You stopped your part. It comes back with the next song.",
   "mst.link.stopPart": "Stop my part",
+  "mst.link.resumePart": "Resume my part",
   "mst.link.disconnect": "Disconnect",
   "mst.link.cap.room": "Room",
   "mst.link.cap.nowPlaying": "Now playing",

@@ -121,3 +121,16 @@ internal static class LinkPlayerMap
         return r;
     }
 }
+
+// The linked view's "Stop my part" slot (user-approved 2026-11-06): Stop (our part is playing) / Resume (we stopped it
+// and the room song is still running with our stem, not paused, and our part is not over) / StopDisabled (anything
+// else). Pure so it is unit-testable; Plugin.Link.Ui.cs swaps two complete pills on it.
+internal enum LinkPartButton { Stop, Resume, StopDisabled }
+
+internal static class LinkPartButtonMap
+{
+    public static LinkPartButton Decide(bool partActive, bool stoppedByPlayer, bool songRunning, bool hasStem, bool partDone)
+        => partActive ? LinkPartButton.Stop
+         : stoppedByPlayer && songRunning && hasStem && !partDone ? LinkPartButton.Resume
+         : LinkPartButton.StopDisabled;
+}

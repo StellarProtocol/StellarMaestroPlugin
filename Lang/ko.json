@@ -162,6 +162,7 @@
   "mst.link.warn.notSynced": "게임 서버 시간을 기다리는 중…",
   "mst.link.warn.stopped": "내 파트를 멈췄습니다. 다음 곡부터 다시 참여합니다.",
   "mst.link.stopPart": "내 파트 멈추기",
+  "mst.link.resumePart": "내 파트 다시 시작",
   "mst.link.disconnect": "연결 끊기",
   "mst.link.cap.room": "방",
   "mst.link.cap.nowPlaying": "재생 중",

@@ -92,6 +92,8 @@ public sealed partial class Plugin
     private const float PillPadX        = 6f;
     private const float PillPairWidth   = 96f;   // label box for two-in-a-row pairs (weighted cells only split
                                                  // equally when both halves prefer the same width)
+    private const float LinkActionLabelW = 150f; // label box of the linked view's bottom pair (half of the 540 window ≈ 250):
+                                                 // roomier than PillPairWidth for "Resume my part" + the longer locales
 
     private HudElement PillButton(Func<string> label, Func<ColorRgba> fill, Func<ColorRgba> text, Action onClick,
         float width = 0f, Func<bool>? enabled = null) => new BubbleElement(new SelectableElement(

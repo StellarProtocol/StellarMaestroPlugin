@@ -162,6 +162,7 @@
   "mst.link.warn.notSynced": "ゲームのサーバー時刻を待機中…",
   "mst.link.warn.stopped": "自分のパートを停止しました。次の曲から再び参加します。",
   "mst.link.stopPart": "自分のパートを停止",
+  "mst.link.resumePart": "自分のパートを再開",
   "mst.link.disconnect": "切断",
   "mst.link.cap.room": "ルーム",
   "mst.link.cap.nowPlaying": "再生中",

@@ -162,6 +162,7 @@
   "mst.link.warn.notSynced": "Menunggu jam server game…",
   "mst.link.warn.stopped": "Anda menghentikan bagian Anda. Bagian ini kembali di lagu berikutnya.",
   "mst.link.stopPart": "Hentikan bagian saya",
+  "mst.link.resumePart": "Lanjutkan bagian saya",
   "mst.link.disconnect": "Putuskan",
   "mst.link.cap.room": "Ruang",
   "mst.link.cap.nowPlaying": "Sedang diputar",

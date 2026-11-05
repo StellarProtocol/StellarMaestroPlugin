@@ -159,6 +159,29 @@ public sealed partial class Plugin
         _lkStoppedByPlayer = true;
     }
 
+    // Which variant the Stop/Resume slot shows (LinkPartButtonMap). "Running" = the room song is still on (it is
+    // cleared at its end + 1.5 s by LinkPartTick) and not paused; "done" = our stem already ran out for this play.
+    private LinkPartButton LinkPartButtonState()
+    {
+        var s = _lkRoomSong;
+        return LinkPartButtonMap.Decide(_lkPartActive, _lkStoppedByPlayer, s != null && !_lkPaused, s?.StemUrl != null,
+                                        // LinkKey allocates → only built in the stopped state (polled per UI refresh)
+                                        _lkStoppedByPlayer && !_lkPartActive && s != null && LinkKey(s) == _lkPartDoneKey);
+    }
+
+    // "Resume my part": rejoin the running song in sync through the NORMAL start path — clearing the flag lets
+    // LinkPartTick call TryStartLinkedPart, which late-joins at now − T + lookahead + 300 on base T (or, during the
+    // count-in, simply starts at the scheduled time), and still waits out a busy re-equip (LinkEquipBusy). The status
+    // is forced out right away so the room sees stopped_by_player → ready / playing without the 1 s cadence.
+    private void ResumeMyPart()
+    {
+        if (LinkPartButtonState() != LinkPartButton.Resume) return;
+        _lkStoppedByPlayer = false;
+        _lkStartAccumMs = double.MaxValue;   // try on the next tick
+        _lkLastStatus = "";                  // send the status immediately
+        _services.Log.Info($"[MaestroLink] resume my part song={_lkRoomSong?.SongId}");
+    }
+
     private void StopLinkedPart()
     {
         if (!_lkPartActive) return;

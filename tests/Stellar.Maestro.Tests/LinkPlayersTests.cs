@@ -96,10 +96,11 @@ public class LinkPlayersTests
         Assert.Equal(LinkInstCol.NoInstrument, r.Inst);
     }
 
-    [Theory]   // already playing / counting in / equipping → the part is not failing, warnings ignored
+    [Theory]   // playing / counting in / equipping / stopped by the player → not failing, warnings ignored
     [InlineData("playing", "Playing")]
     [InlineData("countin", "Playing")]
     [InlineData("equipping", "Switch")]
+    [InlineData("stopped_by_player", "Stopped")]   // the player chose to stop — never a Problem
     public void Running_PartBusy_IgnoresWarnings(string state, string chip)
         => Assert.Equal(Enum.Parse<LinkChip>(chip),
             Map($$"""{ "connected": true, "state": "{{state}}", "part": true, "instrumentId": 3, "warnings": ["not_buffered"] }""", true).Chip);

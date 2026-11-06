@@ -13,7 +13,8 @@ public sealed partial class Plugin
     private bool   _bandEnsembleSync;
     private bool   _bandEnsembleMatchTempo = false;
     private bool   _ensembleWaiting;    // Play was armed while not yet in an ensemble — hold until one starts
-    private int    _ensembleWaitIdx;    // queue index to play once the ensemble goes live
+    private int    _ensembleWaitIdx;    // queue index to play once the ensemble goes live …
+    private PlaylistDto? _ensembleWaitList;   // … in this playlist (the one Play was pressed in)
     private double _ensWaitAccumMs;     // throttle for the "in ensemble yet?" poll
     private bool   _bandAutoAcceptEnsemble;   // auto-accept incoming BandEnsemble invites
     private double _autoAcceptHealAccumMs;    // throttle for the self-heal "is the listener still installed?" poll
@@ -77,14 +78,12 @@ public sealed partial class Plugin
         if (EnsembleActive())
         {
             _ensembleWaiting = false;
-            PlayQueueIndex(_ensembleWaitIdx);
+            PlayFrom(_ensembleWaitList ?? Active, _ensembleWaitIdx);
         }
     }
 
-    private HudElement BuildEnsembleSection() => new ColumnElement(new HudElement[]
-    {
-        new SeparatorElement(),
-        new TextElement(() => _loc.T("mst.ens.header"), Emphasis: true),
+    // ENSEMBLE panel of the Settings window (Plugin.Settings.cs).
+    private HudElement BuildEnsemblePanel() => SectionPanel(() => _loc.T("mst.ens.header"), null,
         HelpToggle("ensemble_sync",
             () => _bandEnsembleSync,
             v  => { _bandEnsembleSync = v; _cfg.Set<bool>("ensemble_sync", v); _cfg.Save(); },
@@ -102,9 +101,7 @@ public sealed partial class Plugin
             SetAutoAcceptEnsemble,
             () => _loc.T("mst.ens.autoAccept"),
             () => _loc.T("mst.ens.autoAccept.help")),
-        new TextElement(() => _loc.T("mst.ens.footer"),
-            Color: () => (ColorRgba?)_services.Theme.Colors.TextMuted),
-    }, Gap: 6f);
+        MutedLine(() => _loc.T("mst.ens.footer")));
 
     // Current server time (ms) in the SAME clock as the grid math: the game's Lua Z.ServerTime:GetServerTime(), which is
     // what the ensemble start timestamp is stamped against and what __b2base (= the EnsembleBaseMs we compute) is

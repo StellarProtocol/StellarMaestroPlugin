@@ -63,15 +63,18 @@ public sealed partial class Plugin : IStellarPlugin
         LoadPlaylists();
         RescanMidiFolder();   // create the midi/ folder (if missing) and pre-populate the song list at startup
 
-        _networkWindow  = RegisterWindow("maestro.network",  _loc.T("mst.win.network"),  1, BuildNetworkRoot());
-        _settingsWindow = RegisterWindow("maestro.settings", _loc.T("mst.win.settings"), 3, BuildSettingsRoot());
+        _helpBuildSection = "mst.hub.settings";   // the "?" tips built next say "Settings · Help" (Plugin.Help.Tip.cs)
+        _settingsWindow = RegisterWindow("maestro.settings", _loc.T("mst.win.settings"), 3, BuildSettingsRoot(), SettingsWindowW);   // the old Network window is merged in (NETWORK SYNC)
         _libraryWindow  = RegisterWindow("maestro.library",  _loc.T("mst.win.library"),  4, BuildLibraryRoot());
+        _helpBuildSection = "mst.hub.preview";
         _previewWindow  = RegisterWindow("maestro.preview",  _loc.T("mst.win.preview"),  5, BuildPreviewRoot());
+        _helpBuildSection = "";
         _tipWindow      = RegisterTipWindow();
         // 540 wide for the players table (Plugin.Link.Players.cs column math). A GlassMenu window that isn't Resizable
         // takes its width from this spec at mount — a saved layout restores position only — so no stale 420 can win.
         _linkWindow     = RegisterWindow("maestro.link",     _loc.T("mst.win.link"),     2, BuildLinkRoot(), 540f);
         var window = _mainWindow = RegisterWindow("maestro.main", _loc.T("mst.title"), 0, BuildBandRoot());
+        InitCenterers();   // child windows open centred on the main window (Plugin.Main.cs)
         // Title stays the fixed literal "Maestro" — the stable pin-identity key (ILauncher.cs:49-50) —
         // so a pinned tile survives a language change; TitleProvider carries the live-localized display.
         _launchers.Add(_services.Launcher.Register(new LauncherEntry(
@@ -79,7 +82,8 @@ public sealed partial class Plugin : IStellarPlugin
             IconPng: LoadIconPng(),
             IconKey: null,
             // While linked, Maestro opens as the Link status view (it replaces the main window — Plugin.Link.Ui.cs).
-            OnOpen:  () => { if (IsLinked) { _linkWindow.SetVisible(true); return; } RescanMidiFolder(); window.SetVisible(true); })   // rescan the midi/ folder each open
+            // Always fronted: ZFront is sticky, and the child windows are fronted on every open (Plugin.Main.cs).
+            OnOpen:  () => { if (IsLinked) { ShowInFront(_linkWindow); return; } RescanMidiFolder(); ShowInFront(window); })   // rescan the midi/ folder each open
         { Group = LauncherGroup.Plugin,
           // Re-localize the tile DISPLAY on a language change; Title above never changes (pin identity).
           TitleProvider = () => _loc.T("mst.title"),
@@ -144,6 +148,7 @@ public sealed partial class Plugin : IStellarPlugin
     {
         try { _services.Framework.Update -= PlaylistTick; } catch { }
         DisposeLink();
+        DisposeCenterers();
         DisposeLinkDiag();
         try { _rateScope?.Dispose(); } catch { }
         try { _previewSynth.Dispose(); } catch { }

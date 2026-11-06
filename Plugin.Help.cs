@@ -5,7 +5,7 @@ using Stellar.Abstractions.Services;
 
 namespace Stellar.Maestro;
 
-// Per-setting help tooltips. A setting is rendered as [toggle] [?] [label]; clicking "?" opens a single shared
+// Per-setting help tooltips. A setting is rendered as [toggle] [label] … [?]; clicking "?" opens a single shared
 // floating popover window anchored under the button, showing a title + richer multi-line description. The window
 // framework has no hover tooltip, so this is the click-to-open equivalent. Content for every "?" is registered by
 // key at build time (HelpToggle), and the one tip window renders whichever key is currently active.
@@ -40,15 +40,27 @@ public sealed partial class Plugin
     // (childForceExpandWidth=false), so nesting the sprite in a centred Row pins it to its intrinsic 16×16 no matter
     // how wide the clickable chip is. The cell is also kept snug (28px ≈ 16 icon + 12 selectable h-padding) so the
     // hover chip hugs the icon instead of leaving dead click area.
+    //
+    // House style (2026-11-06): the hover is a soft ROUND wash drawn by a 28 px circle Bubble around a Bare selectable
+    // (the default selectable hover was a square). Same 28 px cell, so the columns don't move.
     private HudElement ResetIconButton(Action reset)
-        => new CellElement(
+    {
+        var hover = new HoverFlag();
+        return new CellElement(new BubbleElement(
             new SelectableElement(
                 new RowElement(new HudElement[]
                 {
+                    new SpacerElement(6f, 28f),
                     new SpriteElement(() => ResetIconPng()!, new UvRect(0f, 0f, 1f, 1f), 16, 16),
-                }, Justify: RowJustify.Center),
-                OnClick: reset),
-            Width: 28f);
+                    new SpacerElement(6f, 28f),
+                }, Gap: 0.01f, Justify: RowJustify.Center),
+                OnClick: reset)
+            { Bare = true, OnHover = over => hover.On = over })
+        {
+            FillColorFn = () => hover.On ? Menu.MenuText with { A = 0.10f } : Transparent,
+            CornerRadius = RoundRadius(28f), PaddingX = 0f, PaddingY = 0f,   // side/2 − 1 keeps it 28 (see RoundRadius)
+        }, Width: 28f);
+    }
 
     private IWindowControl _tipWindow = null!;
     private string _tipKey = "";   // which help entry the tip window is showing; "" = closed
@@ -61,10 +73,16 @@ public sealed partial class Plugin
     {
         if (_tipKey == key && _tipWindow.IsShown) { _tipKey = ""; _tipWindow.SetVisible(false); return; }
         _tipKey = key;
-        // Anchor below the "?", right-aligned to it so the panel opens to the LEFT of the settings column (which
-        // sits at the screen's right edge) instead of covering the settings it describes. Clamp to the screen.
+        // OnClickWithRect reports SCREEN PIXELS; SetRect takes CANVAS units — scale first, or the tip drifts off its
+        // "?" whenever the UI scale isn't 1 (WindowBuilder-Patterns.md, click-to-open tooltip).
+        float k = _services.Framework.ScreenWidth > 0 && _services.Framework.CanvasWidth > 1f
+            ? _services.Framework.CanvasWidth / _services.Framework.ScreenWidth : 1f;
+        r = new WindowRect(r.X * k, r.Y * k, r.Width * k, r.Height * k);
+        float canvasH = _services.Framework.CanvasHeight > 1f ? _services.Framework.CanvasHeight : _services.Framework.ScreenHeight;
+        // Anchor below the "?", right-aligned to it so the panel opens to the LEFT of the "?" column instead of
+        // covering the settings it describes. Clamp to the screen.
         float x = System.Math.Max(10f, r.X + r.Width - TipWidth);
-        float y = System.Math.Min(r.Y + r.Height + 4f, _services.Framework.ScreenHeight - 40f);
+        float y = System.Math.Min(r.Y + r.Height + 4f, canvasH - 40f);
         _tipRect = new WindowRect(x, y, TipWidth, 0f);
         _tipWindow.SetVisible(true);
         _tipWindow.SetRect(_tipRect);
@@ -86,81 +104,87 @@ public sealed partial class Plugin
     private string TipTitle() => _helpFns.TryGetValue(_tipKey, out var e) ? e.Title() : "";
     private string TipBody()  => _helpFns.TryGetValue(_tipKey, out var e) ? e.Body()  : "";
 
-    // The shared floating tooltip: a small, non-persisted GlassMenu popover with a ✕ that also clears the active key
-    // (so the "?" accent highlight releases). Positioned per click by ToggleTip; starts hidden.
-    private IWindowControl RegisterTipWindow()
-    {
-        IWindowControl w = null!;
-        w = _services.Windows.Register(new WindowRegistration(
-            Spec: new WindowSpec(
-                Id:          "maestro.tip",
-                Title:       _loc.T("mst.win.help"),
-                DefaultRect: new WindowRect(_services.Framework.ScreenWidth - TipWidth - 20f, 20f, TipWidth, 0f),
-                Category:    WindowCategory.Tools,
-                Style:       WindowPanelStyle.GlassMenu)
-            { Draggable = true, Closable = true, StartVisible = false,
-              // Help popover for the Maestro tools — only relevant while in-world.
-              ShouldRender = () => _services.ClientState.Phase == GamePhase.World
-                                   && (_services.ClientState.UiState & GameUIState.Loading) == 0 },
-            Root: BuildTipRoot(),
-            OnClose: () => { _tipKey = ""; w!.SetVisible(false); }));
-        _windows.Add(w);
-        return w;
-    }
+    // The tip window itself (RegisterTipWindow / BuildTipRoot) is Plugin.Help.Tip.cs.
 
-    private HudElement BuildTipRoot() => new ColumnElement(new HudElement[]
-    {
-        new TextElement(TipTitle, Emphasis: true),
-        new TextElement(TipBody, Color: () => (ColorRgba?)_services.Theme.Colors.TextMuted),
-    }, Gap: 6f)
-    { Padding = 2 };
+    // Settings rows (house style, approved design 2026-11-06): every row ends in a "?" so the "?" column lines up
+    // down the panel. Slider row = [label | round-knob slider | value | ↺ | ?]; toggle row = [toggle | label | … | ?].
+    // Label column: the longest slider label in any language is en "Gap between songs" ≈ 127 px (then fil "Puwang ng
+    // restrike" ≈ 122, "Volume ng monitor" ≈ 120), measured with Arial / Yu Gothic / Malgun / Leelawadee at 14 px as an
+    // estimate of the game face — 120 cut it to "Gap between so…" in-game, so 140 leaves ~10 % headroom.
+    private const float SliderLabelW = 140f;
+    private const float SliderValueW = 50f;
+    // The round "?" button: a 24 px circle. It must stay SQUARE, so NOTHING inside may be taller than the side:
+    //   • a 20 px strut + the bold-12 "?" (a 22 px TMP line) drew 20 × 22 (in-game 2026-11-06) — an oval;
+    //   • it then drew 24 × 26 (builds 256e7e3 and d43edca) — NOT the content: that measured 24 × 24 (bridge
+    //     ui.inspect); the bubble's 9-slice background reported a 26 px min height (see the radius note below).
+    // So the content is exactly [24 px strut, the "?" text] side by side in one Row (Row height = the taller of the
+    // two = 24, as the text line is ≤ 24), with no spacer stacked on the text. The glyph sat ~1 px high in its line
+    // box; instead of nudging it with a spacer, CenterGlyphs centres what is DRAWN (TMP Midline) inside the text box,
+    // and the Row centres the box — so the "?" sits in the middle of the circle at any line height ≤ the side.
+    private const float HelpSize = 24f;
 
-    // The "?" help button for a slider/number row: registers the tooltip content for `key` and returns the button
-    // width. Settings labels share this so their sliders (and the right-aligned "?" column) line up; wide enough
-    // for the longest label ("Restrike gap") on one line.
-    private const float SliderLabelW = 90f;
+    // The "?" button: a small round Neutral button (24 px circle, bold-12 "?"), lighter on hover, tinted with the accent
+    // while its tip is open. Bare selectable = no padding / wash of its own, so the circle is exactly HelpSize and the
+    // hover keeps its round shape; the whole circle is the click target. OnClickWithRect anchors the tip under it.
+    // Radius = side / 2 − 1 (RoundRadius, Plugin.Style.cs): the bubble's 9-slice Image reports a min height of its
+    // summed sprite borders (radius + 1 each), so radius side/2 made the bubble 26 tall around this 24 × 24 content —
+    // the oval measured in-game (Bubble 24 × 26, Selectable 24 × 24, "?" text 24 × 18.2). With 11 the borders sum to
+    // 24: an exact 24 × 24 bubble whose arc has a 1 px straight run per side. An exact circle would need the framework
+    // to bake a sprite whose border == radius (or a dedicated circle sprite).
+    private readonly Dictionary<string, bool> _helpHover = new();
 
-    // The bare "?" button cell (fixed width) that opens the tooltip for `key`. Content is registered separately.
     private HudElement HelpButtonCell(string key)
-        => new CellElement(new ButtonElement(
-            Label:   () => "?",
-            OnClick: () => { },                       // real work is in OnClickWithRect (needs the button's rect)
-            Active:  () => _tipKey == key)
-        { OnClickWithRect = r => ToggleTip(key, r) }, Width: 26f);
+        => new BubbleElement(new SelectableElement(
+            new RowElement(new HudElement[]
+            {
+                new SpacerElement(0f, HelpSize),   // height strut = the side; the label box below sets the width
+                new TextElement(() => "?", Color: () => NeutralText(), Width: HelpSize, Align: TextAlign.Center,
+                    NoWrap: true, FontSize: 12) { Bold = true, CenterGlyphs = true },
+            }, Gap: 0.01f, Justify: RowJustify.Center),
+            OnClick: () => { })                       // real work is in OnClickWithRect (needs the button's rect)
+            {
+                Bare = true,
+                OnHover = over => _helpHover[key] = over,
+                OnClickWithRect = r => ToggleTip(key, r),
+            })
+        {
+            FillColorFn = () => _tipKey == key && _tipWindow.IsShown ? Over(AccentColor() with { A = 0.35f }, NeutralFill())
+                              : _helpHover.TryGetValue(key, out var h) && h ? Over(TextColor() with { A = 0.10f }, NeutralFill())
+                              : NeutralFill(),
+            CornerRadius = RoundRadius(HelpSize), PaddingX = 0f, PaddingY = 0f,
+        };
 
-    // Registers tooltip content for `key` and returns the "?" button cell. Append it as the LAST child of a row so
-    // the "?" lands in the panel's right-edge column (aligned across all rows). `label` is the tooltip title.
+    // Registers tooltip content for `key` and returns its "?" pill. Append it as the LAST child of a row so the "?"
+    // lands in the panel's right-edge column. `label` is the tooltip title.
     private HudElement HelpDot(string key, Func<string> label, Func<string> help)
     {
         _helpFns[key] = (label, help);
+        _helpSection[key] = _helpBuildSection;   // the tip subtitle's section (Plugin.Help.Tip.cs)
         return HelpButtonCell(key);
     }
 
-    // A boolean setting rendered as [toggle] [label] … [?] — a flexible spacer pushes the "?" to the right edge so
-    // it lines up with the sliders' "?" column. `label`/`help` are Funcs; `enabled` gates the toggle as before.
+    private ColorRgba RowTextColor(Func<bool>? enabled) => enabled == null || enabled() ? TextColor() : MutedColor();
+
+    // [toggle] [label] … [?]. `enabled` greys the toggle (framework) and the label.
     private HudElement HelpToggle(string key, Func<bool> get, Action<bool> set, Func<string> label,
                                   Func<string> help, Func<bool>? enabled = null)
-    {
-        _helpFns[key] = (label, help);   // register content so the shared tip window can render this key
-        return new RowElement(new HudElement[]
-        {
-            new ToggleElement(Label: () => "", Get: get, Set: set, Enabled: enabled),
-            new TextElement(label),
-            new SpacerElement(),          // flexible: pushes the "?" to the panel's right edge
-            HelpButtonCell(key),
-        }, Gap: 6f);
-    }
-
-    // A slider/number setting: [label] [slider] [value] [↺ reset] [?]. The label width is uniform (SliderLabelW) and
-    // the "?" is the last child, so both the sliders and the "?" align in columns across the settings panel.
-    private HudElement SliderRow(string key, Func<string> label, HudElement slider,
-                                 Func<string> value, Action reset, Func<string> help)
         => new RowElement(new HudElement[]
         {
-            new CellElement(new TextElement(label, Color: () => (ColorRgba?)_services.Theme.Colors.TextMuted), Width: SliderLabelW),
+            new ToggleElement(Label: () => "", Get: get, Set: set, Enabled: enabled),
+            new CellElement(new TextElement(label, Color: () => RowTextColor(enabled), NoWrap: true) { Ellipsize = true }, Weight: 1f),
+            HelpDot(key, label, help),
+        }, Gap: 6f);
+
+    // [label 120] [round-knob slider] [value 50, right] [↺] [?]. Pass the slider built with RoundSlider (and the same
+    // `enabled`, which greys the label and value too).
+    private HudElement SliderRow(string key, Func<string> label, HudElement slider,
+                                 Func<string> value, Action reset, Func<string> help, Func<bool>? enabled = null)
+        => new RowElement(new HudElement[]
+        {
+            new CellElement(new TextElement(label, Color: () => RowTextColor(enabled), NoWrap: true) { Ellipsize = true }, Width: SliderLabelW),
             new CellElement(slider, Weight: 1f),
-            new CellElement(new TextElement(value), Width: 48f),
-            ResetIconButton(reset),
+            new CellElement(new TextElement(value, Color: () => RowTextColor(enabled), Align: TextAlign.Right, NoWrap: true), Width: SliderValueW),
+            ResetIconButton(() => { if (enabled == null || enabled()) reset(); }),
             HelpDot(key, label, help),
         }, Gap: 6f);
 }

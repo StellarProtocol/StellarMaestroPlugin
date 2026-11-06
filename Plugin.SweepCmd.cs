@@ -135,7 +135,7 @@ public sealed partial class Plugin
 
     private string SweepStatus()
     {
-        var songs = Active.Songs;
+        var songs = PlayingSongs;
         string song = _nowPlaying >= 0 && _nowPlaying < songs.Count ? Path.GetFileName(songs[_nowPlaying]) : "";
         return $"playing={(_bandPlayer.IsPlaying ? 1 : 0)} paused={(_bandPlayer.IsPaused ? 1 : 0)} linked={(_lkPhase != LinkPhase.Off ? 1 : 0)} " +
                $"ensemble_wait={(_ensembleWaiting ? 1 : 0)} song={song} pos_ms={_bandPlayer.PositionMs} dur_ms={_bandPlayer.DurationMs} " +

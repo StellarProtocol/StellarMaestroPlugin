@@ -166,9 +166,9 @@ public sealed partial class Plugin
                 // SetVisible only flips the window's flag — the Phase==World ShouldRender gate still decides the mount,
                 // so on a logout this takes effect (status line included) once the player is back in the world.
                 _linkWindow.SetVisible(false);
-                _mainWindow.SetVisible(true);
+                ShowInFront(_mainWindow);
                 // The join form is hidden now, so a room-closed / kicked / expired reason goes on the main status line.
-                if (errorKey.Length > 0) _bandMidiStatus = _loc.T(errorKey);
+                if (errorKey.Length > 0) SetBandStatus(_loc.T(errorKey), true);
             }
         }
         _services.Log.Info($"[MaestroLink] left (error='{errorKey}')");
@@ -331,10 +331,9 @@ public sealed partial class Plugin
             _bandPlayer.StopReset();
             _mainWindow.SetVisible(false);
             _settingsWindow.SetVisible(false);
-            _networkWindow.SetVisible(false);
             _previewWindow.SetVisible(false);
             _libraryWindow.SetVisible(false);
-            _linkWindow.SetVisible(true);
+            ShowInFront(_linkWindow);
             _services.Log.Info($"[MaestroLink] linked: room={_lkRoomCode} player={_lkPlayerId}");
         }
         else _services.Log.Info("[MaestroLink] reconnected");

@@ -22,7 +22,7 @@ Drop your `.mid` files in a folder, pick a song, and Maestro performs it for you
 ## Requirements
 
 - Star Resonance (BlueProtocol), build `release_3.7` / Season 3.
-- The **Stellar** mod framework / launcher (BepInEx-based). Maestro is a Stellar plugin (SDK **2.0.0**, `net6.0`).
+- The **Stellar** mod framework / launcher (BepInEx-based). Maestro is a Stellar plugin (SDK **2.29.0**, `net6.0`; needs the Stellar framework 2.29.0 or newer).
 
 ---
 
